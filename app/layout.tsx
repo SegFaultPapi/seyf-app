@@ -1,4 +1,4 @@
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
 import { Inter, Geist_Mono } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import { NextIntlClientProvider } from 'next-intl'
@@ -69,6 +69,9 @@ export const metadata: Metadata = {
     index: true,
     follow: true,
   },
+}
+
+export const viewport: Viewport = {
   themeColor: [
     { media: '(prefers-color-scheme: light)', color: '#e8f5f1' },
     { media: '(prefers-color-scheme: dark)', color: '#0d3531' },
@@ -99,8 +102,10 @@ export default async function RootLayout({
       </head>
       <body className="min-h-dvh font-sans antialiased">
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
-          <PublicMobileHistorySeed />
-          <PollarProviderClient>{children}</PollarProviderClient>
+          <NextIntlClientProvider messages={messages}>
+            <PublicMobileHistorySeed />
+            <PollarProviderClient>{children}</PollarProviderClient>
+          </NextIntlClientProvider>
         </ThemeProvider>
         <InstallPrompt />
         <ServiceWorkerRegistration />
