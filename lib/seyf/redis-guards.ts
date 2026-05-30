@@ -8,10 +8,10 @@
  */
 
 import { NextResponse } from 'next/server'
-import { Redis } from '@upstash/redis'
+import { getUpstashRedis } from '@/lib/seyf/upstash-redis'
 
-function getRedis(): Redis {
-  return Redis.fromEnv()
+function getRedis() {
+  return getUpstashRedis()
 }
 
 // ─── 1. Rate Limiter ────────────────────────────────────────────────────────
@@ -36,6 +36,7 @@ export type RateLimitResult =
 export async function checkRateLimit(cfg: RateLimitConfig): Promise<RateLimitResult> {
   try {
     const redis = getRedis()
+    if (!redis) return { allowed: true, remaining: cfg.limit }
     const redisKey = `seyf:rl:${cfg.key}`
     const count = await redis.incr(redisKey)
     if (count === 1) {
@@ -118,7 +119,9 @@ function advanceKey(customerId: string): string {
 
 export async function getAdvanceSession(customerId: string): Promise<AdvanceSession | null> {
   try {
-    return await getRedis().get<AdvanceSession>(advanceKey(customerId))
+    const redis = getRedis()
+    if (!redis) return null
+    return await redis.get<AdvanceSession>(advanceKey(customerId))
   } catch {
     return null
   }
@@ -127,15 +130,19 @@ export async function getAdvanceSession(customerId: string): Promise<AdvanceSess
 export async function upsertAdvanceSession(
   session: AdvanceSession,
 ): Promise<void> {
+  const redis = getRedis()
+  if (!redis) return
   // TTL: 90 days — advances should settle or expire within that window
-  await getRedis().set(advanceKey(session.customerId), session, {
+  await redis.set(advanceKey(session.customerId), session, {
     ex: 60 * 60 * 24 * 90,
   })
 }
 
 export async function clearAdvanceSession(customerId: string): Promise<void> {
   try {
-    await getRedis().del(advanceKey(customerId))
+    const redis = getRedis()
+    if (!redis) return
+    await redis.del(advanceKey(customerId))
   } catch {
     // noop
   }
@@ -165,6 +172,7 @@ export async function acquireOnrampLock(
 ): Promise<boolean> {
   try {
     const redis = getRedis()
+    if (!redis) return true
     // SET key value NX PX <ms> — only sets if key does not exist
     const result = await redis.set(lockKey(customerId), '1', {
       nx: true,
@@ -179,7 +187,9 @@ export async function acquireOnrampLock(
 
 export async function releaseOnrampLock(customerId: string): Promise<void> {
   try {
-    await getRedis().del(lockKey(customerId))
+    const redis = getRedis()
+    if (!redis) return
+    await redis.del(lockKey(customerId))
   } catch {
     // noop — lock will expire on its own via TTL
   }

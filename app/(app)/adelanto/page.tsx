@@ -375,7 +375,7 @@ export default function AdelantoPage() {
         disabled={confirming || !maxAdvanceBusiness || (readiness ? !readiness.onrampEnabled : false)}
         className="h-12 w-full rounded-full bg-foreground text-base font-bold text-background shadow-[0_10px_28px_rgba(255,255,255,0.12)] hover:bg-foreground/90 disabled:opacity-60"
       >
-        {confirming ? t('confirming') : t('confirmButton', { count: years })}
+        {confirming ? t('confirming') : t('confirmButton', { years, plural: years !== 1 ? 's' : '' })}
       </Button>
 
       <section className="rounded-[1.5rem] bg-card p-5">

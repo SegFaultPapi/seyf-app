@@ -149,50 +149,66 @@
   },
   "adelanto": {
     "loadingSimulation": "Generando simulación...",
-    "noActiveCycle": "Sin ciclo activo",
-    "noActiveCycleBody": "No tienes inversiones activas que califiquen para un adelanto en este momento.",
-    "goInvest": "Ir a invertir",
-    "successBadge": "Adelanto activado",
-    "successTitle": "Listo",
-    "successBody": "Tu adelanto se acreditó correctamente.",
-    "successReceived": "Adelanto recibido",
-    "successRef": "Referencia de operación",
-    "useAdelanto": "Usar mi adelanto",
-    "backHome": "Volver al inicio",
-    "badge": "Adelanto de rendimiento",
-    "title": "Obtén liquidez hoy",
-    "body": "Adelanta una parte de tu rendimiento proyectado sin esperar al vencimiento.",
-    "bodyProtected": "Tu saldo se mantiene protegido por reglas de bloqueo.",
-    "capitalBase": "Capital base (MXN)",
-    "topePermitido": "Tope permitido",
-    "tasaCetesReal": "Tasa CETES real (anual)",
-    "tasaAdelanto": "Tasa de adelanto (anual)",
-    "yearsLabel": "Años de rendimiento a adelantar (máx. por tope 90%: {max})",
-    "yearsDisplay": "{years} año(s)",
-    "yearsUpdating": " · actualizando...",
-    "maxAmountLabel": "Monto máximo disponible (MXN)",
-    "netToUser": "Rendimiento neto a recibir",
-    "fee": "Comisión al liquidar (1.5%)",
-    "releaseDate": "Fecha de liberación ciclo",
-    "missingStepsTitle": "Faltan pasos para habilitar adelanto",
-    "completeVerification": "Completar verificación",
-    "checkDeposits": "Revisar depósitos",
-    "legalNote": "El adelanto usa el rendimiento proyectado como respaldo y el tope de seguridad es 90% de tu capital. Al liquidar, se aplica una comisión del 1.5%.",
-    "confirmLoading": "Confirmando operación…",
+    "noCycle": {
+      "title": "Sin ciclo activo",
+      "body": "No tienes inversiones activas que califiquen para un adelanto en este momento.",
+      "button": "Ir a invertir"
+    },
+    "success": {
+      "badge": "Adelanto activado",
+      "title": "Listo",
+      "body": "Tu adelanto se acreditó correctamente.",
+      "receivedLabel": "Adelanto recibido",
+      "refLabel": "Referencia de operación",
+      "useButton": "Usar mi adelanto",
+      "backLink": "Volver al inicio"
+    },
+    "hero": {
+      "badge": "Adelanto de rendimiento",
+      "title": "Obtén liquidez hoy",
+      "body": "Adelanta una parte de tu rendimiento proyectado sin esperar al vencimiento.",
+      "bold": "Tu saldo se mantiene protegido por reglas de bloqueo."
+    },
+    "stats": {
+      "baseMxn": "Capital base (MXN)",
+      "maxRatio": "Tope permitido",
+      "cetesApy": "Tasa CETES real (anual)",
+      "advanceApy": "Tasa de adelanto (anual)"
+    },
+    "yearsSlider": {
+      "label": "Años de rendimiento a adelantar (máx. por tope 90%: {max})",
+      "value": "{count} año(s)",
+      "updating": " · actualizando..."
+    },
+    "maxAdvanceLabel": "Monto máximo disponible (MXN)",
+    "summary": {
+      "netLabel": "Rendimiento neto a recibir",
+      "feeLabel": "Comisión al liquidar (1.5%)",
+      "dateLabel": "Fecha de liberación ciclo"
+    },
+    "missingSteps": {
+      "title": "Faltan pasos para habilitar adelanto",
+      "btnVerify": "Completar verificación",
+      "btnDeposit": "Revisar depósitos"
+    },
+    "noteHtml": "El adelanto usa el rendimiento proyectado como respaldo y el tope de seguridad es 90% de tu capital. Al liquidar, se aplica una comisión del 1.5%.",
+    "confirming": "Confirmando operación…",
     "confirmButton": "Confirmar adelanto ({years} año{plural})",
-    "yourAdelantos": "Tus adelantos",
-    "recordsCount": "{count} registro(s)",
-    "noRecords": "Sin registros aún",
-    "viewDetail": "Ver detalle completo",
+    "history": {
+      "title": "Tus adelantos",
+      "records": "{count} registro(s)",
+      "noRecords": "Sin registros aún",
+      "detailsButton": "Ver detalle completo"
+    },
     "footerNote": "Operación sujeta a validaciones de cuenta y disponibilidad.",
     "errors": {
       "loadFailed": "No pudimos cargar tu información de adelanto.",
       "simFailed": "No pudimos actualizar la simulación.",
-      "incompleteAccount": "Completa tu configuración de cuenta antes de solicitar adelanto.",
+      "setupIncomplete": "Completa tu configuración de cuenta antes de solicitar adelanto.",
       "noBalance": "No tienes saldo disponible para adelanto en este momento.",
-      "connectionError": "Error de conexión. Intenta nuevamente.",
-      "processError": "Error al procesar el adelanto.",
+      "networkError": "Error de conexión. Intenta nuevamente.",
       "processFailed": "No pudimos procesar tu adelanto.",
+      "processFailedDefault": "No pudimos procesar tu adelanto.",
       "processFailedHttp": "No pudimos procesar tu adelanto (HTTP {status})."
     }
   },

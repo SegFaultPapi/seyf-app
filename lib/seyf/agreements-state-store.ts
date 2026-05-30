@@ -1,4 +1,4 @@
-import { Redis } from '@upstash/redis'
+import { getUpstashRedis } from '@/lib/seyf/upstash-redis'
 
 type AgreementsRow = {
   customerId: string
@@ -8,8 +8,8 @@ type AgreementsRow = {
   updatedAt: string
 }
 
-function getRedis(): Redis {
-  return Redis.fromEnv()
+function getRedis() {
+  return getUpstashRedis()
 }
 
 function agreementsKey(customerId: string, walletPublicKey: string): string {
@@ -22,6 +22,7 @@ export async function getStoredAgreementsStatus(
 ): Promise<{ accepted: boolean; acceptedAt: string | null } | null> {
   try {
     const redis = getRedis()
+    if (!redis) return null
     const row = await redis.get<AgreementsRow>(agreementsKey(customerId, walletPublicKey))
     if (!row) return null
     return { accepted: row.accepted, acceptedAt: row.acceptedAt }
@@ -36,6 +37,7 @@ export async function upsertStoredAgreementsAccepted(params: {
   acceptedAt?: string | null
 }): Promise<void> {
   const redis = getRedis()
+  if (!redis) return
   const key = agreementsKey(params.customerId, params.walletPublicKey)
   const existing = await redis.get<AgreementsRow>(key)
   const now = new Date().toISOString()

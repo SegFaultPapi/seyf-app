@@ -149,50 +149,66 @@
   },
   "adelanto": {
     "loadingSimulation": "[EN] Generando simulación...",
-    "noActiveCycle": "[EN] Sin ciclo activo",
-    "noActiveCycleBody": "[EN] No tienes inversiones activas que califiquen para un adelanto en este momento.",
-    "goInvest": "[EN] Ir a invertir",
-    "successBadge": "[EN] Adelanto activado",
-    "successTitle": "[EN] Listo",
-    "successBody": "[EN] Tu adelanto se acreditó correctamente.",
-    "successReceived": "[EN] Adelanto recibido",
-    "successRef": "[EN] Referencia de operación",
-    "useAdelanto": "[EN] Usar mi adelanto",
-    "backHome": "[EN] Volver al inicio",
-    "badge": "[EN] Adelanto de rendimiento",
-    "title": "[EN] Obtén liquidez hoy",
-    "body": "[EN] Adelanta una parte de tu rendimiento proyectado sin esperar al vencimiento.",
-    "bodyProtected": "[EN] Tu saldo se mantiene protegido por reglas de bloqueo.",
-    "capitalBase": "[EN] Capital base (MXN)",
-    "topePermitido": "[EN] Tope permitido",
-    "tasaCetesReal": "[EN] Tasa CETES real (anual)",
-    "tasaAdelanto": "[EN] Tasa de adelanto (anual)",
-    "yearsLabel": "[EN] Años de rendimiento a adelantar (máx. por tope 90%: {max})",
-    "yearsDisplay": "[EN] {years} año(s)",
-    "yearsUpdating": "[EN]  · actualizando...",
-    "maxAmountLabel": "[EN] Monto máximo disponible (MXN)",
-    "netToUser": "[EN] Rendimiento neto a recibir",
-    "fee": "[EN] Comisión al liquidar (1.5%)",
-    "releaseDate": "[EN] Fecha de liberación ciclo",
-    "missingStepsTitle": "[EN] Faltan pasos para habilitar adelanto",
-    "completeVerification": "[EN] Completar verificación",
-    "checkDeposits": "[EN] Revisar depósitos",
-    "legalNote": "[EN] El adelanto usa el rendimiento proyectado como respaldo y el tope de seguridad es 90% de tu capital. Al liquidar, se aplica una comisión del 1.5%.",
-    "confirmLoading": "[EN] Confirmando operación…",
+    "noCycle": {
+      "title": "[EN] Sin ciclo activo",
+      "body": "[EN] No tienes inversiones activas que califiquen para un adelanto en este momento.",
+      "button": "[EN] Ir a invertir"
+    },
+    "success": {
+      "badge": "[EN] Adelanto activado",
+      "title": "[EN] Listo",
+      "body": "[EN] Tu adelanto se acreditó correctamente.",
+      "receivedLabel": "[EN] Adelanto recibido",
+      "refLabel": "[EN] Referencia de operación",
+      "useButton": "[EN] Usar mi adelanto",
+      "backLink": "[EN] Volver al inicio"
+    },
+    "hero": {
+      "badge": "[EN] Adelanto de rendimiento",
+      "title": "[EN] Obtén liquidez hoy",
+      "body": "[EN] Adelanta una parte de tu rendimiento proyectado sin esperar al vencimiento.",
+      "bold": "[EN] Tu saldo se mantiene protegido por reglas de bloqueo."
+    },
+    "stats": {
+      "baseMxn": "[EN] Capital base (MXN)",
+      "maxRatio": "[EN] Tope permitido",
+      "cetesApy": "[EN] Tasa CETES real (anual)",
+      "advanceApy": "[EN] Tasa de adelanto (anual)"
+    },
+    "yearsSlider": {
+      "label": "[EN] Años de rendimiento a adelantar (máx. por tope 90%: {max})",
+      "value": "[EN] {count} año(s)",
+      "updating": "[EN]  · actualizando..."
+    },
+    "maxAdvanceLabel": "[EN] Monto máximo disponible (MXN)",
+    "summary": {
+      "netLabel": "[EN] Rendimiento neto a recibir",
+      "feeLabel": "[EN] Comisión al liquidar (1.5%)",
+      "dateLabel": "[EN] Fecha de liberación ciclo"
+    },
+    "missingSteps": {
+      "title": "[EN] Faltan pasos para habilitar adelanto",
+      "btnVerify": "[EN] Completar verificación",
+      "btnDeposit": "[EN] Revisar depósitos"
+    },
+    "noteHtml": "[EN] El adelanto usa el rendimiento proyectado como respaldo y el tope de seguridad es 90% de tu capital. Al liquidar, se aplica una comisión del 1.5%.",
+    "confirming": "[EN] Confirmando operación…",
     "confirmButton": "[EN] Confirmar adelanto ({years} año{plural})",
-    "yourAdelantos": "[EN] Tus adelantos",
-    "recordsCount": "[EN] {count} registro(s)",
-    "noRecords": "[EN] Sin registros aún",
-    "viewDetail": "[EN] Ver detalle completo",
+    "history": {
+      "title": "[EN] Tus adelantos",
+      "records": "[EN] {count} registro(s)",
+      "noRecords": "[EN] Sin registros aún",
+      "detailsButton": "[EN] Ver detalle completo"
+    },
     "footerNote": "[EN] Operación sujeta a validaciones de cuenta y disponibilidad.",
     "errors": {
       "loadFailed": "[EN] No pudimos cargar tu información de adelanto.",
       "simFailed": "[EN] No pudimos actualizar la simulación.",
-      "incompleteAccount": "[EN] Completa tu configuración de cuenta antes de solicitar adelanto.",
+      "setupIncomplete": "[EN] Completa tu configuración de cuenta antes de solicitar adelanto.",
       "noBalance": "[EN] No tienes saldo disponible para adelanto en este momento.",
-      "connectionError": "[EN] Error de conexión. Intenta nuevamente.",
-      "processError": "[EN] Error al procesar el adelanto.",
+      "networkError": "[EN] Error de conexión. Intenta nuevamente.",
       "processFailed": "[EN] No pudimos procesar tu adelanto.",
+      "processFailedDefault": "[EN] No pudimos procesar tu adelanto.",
       "processFailedHttp": "[EN] No pudimos procesar tu adelanto (HTTP {status})."
     }
   },

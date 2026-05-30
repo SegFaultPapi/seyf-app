@@ -2,12 +2,14 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useTranslations } from "next-intl";
 import { useSeyfWallet } from "@/lib/seyf/use-seyf-wallet";
 import { AppBackLink } from "@/components/app/app-back-link";
 import { AppPageBody } from "@/components/app/app-page-body";
 import { MovementDetailSheet } from "@/components/app/movement-detail-sheet";
 import { iconForMovimientoTipo } from "@/components/app/movement-tipo-icons";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   HISTORIAL_POLL_EXTRA_DELAYS_MS,
   HISTORIAL_POLL_MS,
@@ -71,6 +73,7 @@ function formatHistorialMonto(mov: UserMovement): string {
 }
 
 export default function HistorialPageClient() {
+  const t = useTranslations("historial");
   const { wallet, loading: walletLoading } = useSeyfWallet();
   const [items, setItems] = useState<UserMovement[]>([]);
   const [loading, setLoading] = useState(false);
@@ -250,7 +253,7 @@ export default function HistorialPageClient() {
           <div className="pointer-events-none absolute -bottom-20 -left-14 h-44 w-44 rounded-full bg-[#b8b8b5]/20 blur-3xl dark:bg-[#22433c]/40" />
           <div className="relative">
             <p className="inline-flex rounded-full border border-[#b8b8b5]/60 bg-white/80 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-[#5f7168] dark:border-white/20 dark:bg-white/15 dark:text-[#d2e9df]">
-              {t('hero.badge')}
+              {t("stateBadge")}
             </p>
             <h1 className="mt-2 text-3xl font-black tracking-tight text-[#41534b] dark:text-white">
               Historial
@@ -261,7 +264,7 @@ export default function HistorialPageClient() {
           </div>
         </section>
         <Button asChild className="h-11 rounded-full font-bold">
-          <Link href="/">{t('hero.connectBtn')}</Link>
+          <Link href="/">{t("connectAction")}</Link>
         </Button>
       </AppPageBody>
     );
@@ -275,13 +278,13 @@ export default function HistorialPageClient() {
         <div className="pointer-events-none absolute -bottom-20 -left-14 h-44 w-44 rounded-full bg-[#b8b8b5]/20 blur-3xl dark:bg-[#22433c]/40" />
         <div className="relative">
           <p className="inline-flex rounded-full border border-[#b8b8b5]/60 bg-white/80 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-[#5f7168] dark:border-white/20 dark:bg-white/15 dark:text-[#d2e9df]">
-            {t('hero.badge')}
+            {t("stateBadge")}
           </p>
           <h1 className="mt-2 text-3xl font-black tracking-tight text-[#41534b] dark:text-white">
             Historial
           </h1>
           <p className="mt-2 text-sm text-[#6f837a] dark:text-[#d2e9df]">
-            {t('hero.subtitle')}
+            {t("body")}
           </p>
         </div>
       </section>

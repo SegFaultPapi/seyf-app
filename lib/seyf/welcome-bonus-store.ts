@@ -1,4 +1,4 @@
-import { Redis } from '@upstash/redis'
+import { getUpstashRedis } from '@/lib/seyf/upstash-redis'
 
 type WelcomeBonusRow = {
   customerId: string
@@ -7,8 +7,8 @@ type WelcomeBonusRow = {
   claimedAt: string
 }
 
-function getRedis(): Redis {
-  return Redis.fromEnv()
+function getRedis() {
+  return getUpstashRedis()
 }
 
 function bonusKey(customerId: string): string {
@@ -20,6 +20,7 @@ export async function getWelcomeBonusClaimByCustomerId(
 ): Promise<WelcomeBonusRow | null> {
   try {
     const redis = getRedis()
+    if (!redis) return null
     return await redis.get<WelcomeBonusRow>(bonusKey(customerId))
   } catch {
     return null
@@ -29,6 +30,7 @@ export async function getWelcomeBonusClaimByCustomerId(
 export async function clearWelcomeBonusClaimByCustomerId(customerId: string): Promise<void> {
   try {
     const redis = getRedis()
+    if (!redis) return
     await redis.del(bonusKey(customerId))
   } catch {
     // ignorar
@@ -41,6 +43,7 @@ export async function upsertWelcomeBonusClaim(params: {
   amountMxn: number
 }): Promise<void> {
   const redis = getRedis()
+  if (!redis) return
   const row: WelcomeBonusRow = {
     customerId: params.customerId,
     orderId: params.orderId,

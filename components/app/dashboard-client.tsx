@@ -3,6 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useTranslations } from "next-intl";
 import useSWR from "swr";
 import { animate, useMotionValue, useReducedMotion } from "framer-motion";
 import {
@@ -21,6 +22,7 @@ import { MovementDetailSheet } from "@/components/app/movement-detail-sheet";
 import { YieldTrendChart } from "@/components/app/yield-trend-chart";
 import { iconForMovimientoTipo } from "@/components/app/movement-tipo-icons";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { balanceForAssetCode } from "@/lib/seyf/accesly-balances";
 import { cetesBalanceEquivMxne } from "@/lib/seyf/cetes-mxne-equiv";
 import { cetesStablebondDisplayFromRow } from "@/lib/seyf/stablebond-cetes-display";
@@ -112,6 +114,7 @@ const advanceSimFetcher = (
   });
 
 export default function DashboardClient({ vm }: { vm: DashboardViewModel }) {
+  const t = useTranslations("dashboard");
   const { wallet, assetBalances, loading, refreshBalance } = useSeyfWallet();
   const [selected, setSelected] = useState<UserMovement | null>(null);
   const [hideBalances, setHideBalances] = useState(false);
@@ -597,7 +600,7 @@ export default function DashboardClient({ vm }: { vm: DashboardViewModel }) {
             className="ml-3 h-8 shrink-0 rounded-full border-amber-500/30 bg-transparent px-3 text-xs font-semibold text-amber-300 hover:bg-amber-500/10"
             onClick={() => void mutate()}
           >
-            {t('retry')}
+            {t("retryAction")}
           </Button>
         </section>
       )}

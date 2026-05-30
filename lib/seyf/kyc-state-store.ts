@@ -1,4 +1,4 @@
-import { Redis } from '@upstash/redis'
+import { getUpstashRedis } from '@/lib/seyf/upstash-redis'
 import type { EtherfuseKycSnapshot, EtherfuseKycStatus } from '@/lib/etherfuse/kyc'
 
 type KycStateRow = {
@@ -11,8 +11,8 @@ type KycStateRow = {
   lastEventId: string | null
 }
 
-function getRedis(): Redis {
-  return Redis.fromEnv()
+function getRedis() {
+  return getUpstashRedis()
 }
 
 function kycKey(customerId: string, walletPublicKey: string): string {
@@ -42,6 +42,7 @@ export async function getStoredKycSnapshot(
 ): Promise<EtherfuseKycSnapshot | null> {
   try {
     const redis = getRedis()
+    if (!redis) return null
     const row = await redis.get<KycStateRow>(kycKey(customerId, walletPublicKey))
     return row ? rowToSnapshot(row) : null
   } catch {
@@ -59,6 +60,7 @@ export async function upsertStoredKycSnapshot(params: {
   eventTimestamp?: string | null
 }): Promise<{ updated: boolean }> {
   const redis = getRedis()
+  if (!redis) return { updated: false }
   const key = kycKey(params.customerId, params.walletPublicKey)
   const existing = await redis.get<KycStateRow>(key)
 
@@ -123,6 +125,7 @@ export async function listStoredKycRows(limit = 200): Promise<
 > {
   try {
     const redis = getRedis()
+    if (!redis) return []
     // Scan keys matching seyf:kyc:*:* (skip index keys)
     const keys: string[] = []
     let cursor = 0

@@ -4,16 +4,10 @@
  * Clave: seyf:onboarding:{walletPublicKey}
  * Valor: { customerId, bankAccountId, updatedAt }
  *
- * Ventajas vs cookie httpOnly:
- *  - Funciona entre dispositivos / browsers
- *  - Persiste aunque el usuario borre cookies
- *  - Fuente de verdad única por wallet
- *  - Elimina errores de sesión stale al cambiar org/API key
+ * Sin UPSTASH_REDIS_* en .env: no-op (sesión solo vía cookie/API en dev).
  */
 
-import { Redis } from '@upstash/redis'
-
-const redis = Redis.fromEnv()
+import { getUpstashRedis } from '@/lib/seyf/upstash-redis'
 
 const KEY_PREFIX = 'seyf:onboarding'
 const TTL_SEC = 60 * 60 * 24 * 365 // 1 año
@@ -32,6 +26,8 @@ function redisKey(walletPublicKey: string): string {
 export async function getStoredOnboardingSession(
   walletPublicKey: string,
 ): Promise<StoredOnboardingSession | null> {
+  const redis = getUpstashRedis()
+  if (!redis) return null
   try {
     const raw = await redis.get<StoredOnboardingSession>(redisKey(walletPublicKey))
     if (!raw || typeof raw !== 'object') return null
@@ -46,6 +42,8 @@ export async function getStoredOnboardingSession(
 export async function saveStoredOnboardingSession(
   data: Omit<StoredOnboardingSession, 'updatedAt'>,
 ): Promise<void> {
+  const redis = getUpstashRedis()
+  if (!redis) return
   try {
     const record: StoredOnboardingSession = {
       ...data,
@@ -58,6 +56,8 @@ export async function saveStoredOnboardingSession(
 }
 
 export async function clearStoredOnboardingSession(walletPublicKey: string): Promise<void> {
+  const redis = getUpstashRedis()
+  if (!redis) return
   try {
     await redis.del(redisKey(walletPublicKey))
   } catch (e) {
