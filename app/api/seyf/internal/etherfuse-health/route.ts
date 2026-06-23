@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
+import type { NextRequest } from 'next/server'
 import { verifyEtherfuseApiKey } from '@/lib/etherfuse/client'
 import { getEtherfuseConfig } from '@/lib/etherfuse/config'
+import { withLogging } from '@/lib/observability/with-logging'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -10,7 +12,7 @@ export const revalidate = 0
  * Llama a /ramp/me para verificar que ETHERFUSE_API_KEY y ETHERFUSE_API_BASE_URL son correctos.
  * Útil para diagnosticar "Organization not found" en Vercel.
  */
-export async function GET() {
+async function handleGet(_request: NextRequest, _context: { params: Promise<Record<string, string | string[]>> }) {
   try {
     const { baseUrl, apiKey } = getEtherfuseConfig()
     const keyPreview = apiKey.length > 12
@@ -45,3 +47,5 @@ export async function GET() {
     )
   }
 }
+
+export const GET = withLogging(handleGet, { routeName: "internal/etherfuse-health", provider: "etherfuse" })

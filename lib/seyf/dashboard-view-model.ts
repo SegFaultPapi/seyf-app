@@ -10,7 +10,6 @@ import {
 } from "@/lib/seyf/dashboard-cetes-saldo";
 import { resolveEtherfuseRampContext } from "@/lib/seyf/etherfuse-ramp-context";
 import { fetchUserMovements } from "@/lib/seyf/user-movements";
-import { getActiveCycle } from "@/lib/seyf/cycle-store";
 import {
   DASHBOARD_MOVEMENTS_PREVIEW_LIMIT,
   type DashboardViewModel,

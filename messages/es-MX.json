@@ -23,7 +23,7 @@
       "passwordPlaceholder": "Contrasena",
       "submitLoading": "Entrando...",
       "submit": "Iniciar sesion",
-      "forgotPassword": "Olvide mi contrasena",
+      "forgotPassword": "¿Olvidaste tu contraseña?",
       "noAccount": "No tienes cuenta?",
       "createAccount": "Crear cuenta"
     },
@@ -44,12 +44,91 @@
       "submit": "Continuar",
       "hasAccount": "Ya tienes cuenta?",
       "loginLink": "Iniciar sesion"
+    },
+    "registroSteps": {
+      "step1": {
+        "title": "Cuenta",
+        "heading": "Tu cuenta",
+        "subtitle": "Ingresa tus datos personales para empezar.",
+        "nameLabel": "Nombre completo",
+        "namePlaceholder": "Nombre completo",
+        "emailLabel": "Correo electrónico",
+        "emailPlaceholder": "Correo electrónico",
+        "passwordLabel": "Contraseña",
+        "passwordPlaceholder": "Contraseña"
+      },
+      "step2": {
+        "title": "Negocio",
+        "heading": "Tu negocio",
+        "subtitle": "Información de tu empresa o actividad profesional.",
+        "businessNameLabel": "Nombre del negocio",
+        "businessNamePlaceholder": "Nombre del negocio",
+        "rfcLabel": "RFC",
+        "rfcPlaceholder": "RFC (13 caracteres)",
+        "curpLabel": "CURP",
+        "curpPlaceholder": "CURP (18 caracteres)"
+      },
+      "step3": {
+        "title": "Verificación",
+        "heading": "Verifica tu teléfono",
+        "subtitle": "Ingresa el código que enviamos a tu teléfono.",
+        "phoneLabel": "Teléfono (10 dígitos)",
+        "phonePlaceholder": "Teléfono (10 dígitos)",
+        "otpLabel": "Código de verificación",
+        "otpPlaceholder": "Ingresa el código de 6 dígitos",
+        "resend": "Reenviar código",
+        "resendCountdown": "Reenviar en {seconds}s",
+        "sent": "Código enviado"
+      },
+      "progress": {
+        "step1": "Cuenta",
+        "step2": "Negocio",
+        "step3": "Verificación"
+      },
+      "success": {
+        "title": "Cuenta creada",
+        "heading": "¡Listo!",
+        "subtitle": "Tu cuenta está en proceso de verificación. Te notificaremos cuando esté activa.",
+        "resend": "¿No recibiste el código? Reenviar",
+        "resent": "¡Código reenviado!",
+        "cta": "Ir al inicio"
+      },
+      "actions": {
+        "continue": "Continuar",
+        "back": "Atrás",
+        "verify": "Verificar código",
+        "verifying": "Verificando..."
+      },
+      "validation": {
+        "nameRequired": "El nombre es obligatorio",
+        "nameMin": "El nombre debe tener al menos 2 caracteres",
+        "emailRequired": "El correo es obligatorio",
+        "emailInvalid": "Correo electrónico inválido",
+        "passwordRequired": "La contraseña es obligatoria",
+        "passwordMin": "Mínimo 8 caracteres",
+        "passwordUppercase": "Una mayúscula",
+        "passwordLowercase": "Una minúscula",
+        "passwordNumber": "Un número",
+        "passwordSpecial": "Un carácter especial",
+        "businessNameRequired": "El nombre del negocio es obligatorio",
+        "rfcRequired": "El RFC es obligatorio",
+        "rfcInvalid": "RFC inválido (13 caracteres)",
+        "curpRequired": "La CURP es obligatoria",
+        "curpInvalid": "CURP inválida (18 caracteres)",
+        "phoneRequired": "El teléfono es obligatorio",
+        "phoneInvalid": "Número inválido (10 dígitos)",
+        "otpRequired": "El código es obligatorio",
+        "otpInvalid": "El código debe ser de 6 dígitos"
+      }
     }
   },
   "dashboard": {
     "connectWallet": "Conecta tu wallet",
     "connectWalletBody": "Para ver tu saldo y movimientos, inicia sesión en tu cuenta.",
     "connectAction": "Ir a conectar",
+    "emptyStateTitle": "Tu capital está listo para trabajar.",
+    "emptyStateBody": "Deposita para empezar.",
+    "emptyStateCta": "Depositar",
     "mainAccount": "Cuenta principal",
     "lastUpdate": "Última actualización",
     "showBalances": "Mostrar saldos",

@@ -1,144 +1,131 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useTranslations } from "next-intl";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { ProgressIndicator } from "@/components/app/registration-steps/progress-indicator";
+import { AccountStep } from "@/components/app/registration-steps/account-step";
+import { BusinessStep } from "@/components/app/registration-steps/business-step";
+import { PhoneVerificationStep } from "@/components/app/registration-steps/phone-verification-step";
+import { SuccessConfirmation } from "@/components/app/registration-steps/success-confirmation";
 
 export default function RegistroPage() {
-  const t = useTranslations("auth.registro");
-  const router = useRouter();
-  const [form, setForm] = useState({
-    nombre: "",
-    correo: "",
-    telefono: "",
-    password: "",
-  });
-  const [accepted, setAccepted] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [step, setStep] = useState(0);
+  const [phone, setPhone] = useState("");
+  const prevStep = useRef(0);
 
-  const handleChange =
-    (field: string) => (e: React.ChangeEvent<HTMLInputElement>) => {
-      setForm((prev) => ({ ...prev, [field]: e.target.value }));
-    };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!accepted) return;
-    setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
-      router.push("/identidad");
-    }, 1200);
-  };
+  const goingForward = step >= prevStep.current;
+  prevStep.current = step;
 
   return (
     <div className="flex min-h-screen flex-col bg-background px-6 py-12">
-      {/* Header */}
-      <div className="mb-10">
-        <Link
-          href="/"
-          className="text-2xl font-black tracking-tight text-foreground"
-        >
-          Seyf
-        </Link>
-      </div>
+      <style>{`
+        @keyframes slideInFromRight {
+          from { opacity: 0; transform: translateX(30px); }
+          to   { opacity: 1; transform: translateX(0); }
+        }
+        @keyframes slideInFromLeft {
+          from { opacity: 0; transform: translateX(-30px); }
+          to   { opacity: 1; transform: translateX(0); }
+        }
+        .slide-forward {
+          animation: slideInFromRight 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .slide-backward {
+          animation: slideInFromLeft 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+      `}</style>
 
-      <div className="flex flex-1 flex-col justify-center">
-        <div className="mb-8">
-          <h2 className="text-4xl font-black tracking-tight text-foreground leading-none">
-            Crea tu
-            <br />
-            cuenta.
-          </h2>
-          <p className="mt-4 text-base text-muted-foreground font-normal">
-            {t('subtitle')}
-          </p>
+      <div className="mx-auto w-full max-w-md">
+        <div className="mb-12">
+          <h1 className="text-4xl font-black tracking-tight text-foreground">
+            Seyf
+          </h1>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <Input
-            type="text"
-            placeholder={t('namePlaceholder')}
-            value={form.nombre}
-            onChange={handleChange("nombre")}
-            required
-            className="h-14 rounded-full bg-secondary px-6 text-base font-medium placeholder:text-muted-foreground border-0 focus-visible:ring-1 focus-visible:ring-foreground"
-          />
-          <Input
-            type="email"
-            placeholder="Correo electrónico"
-            value={form.correo}
-            onChange={handleChange("correo")}
-            required
-            className="h-14 rounded-full bg-secondary px-6 text-base font-medium placeholder:text-muted-foreground border-0 focus-visible:ring-1 focus-visible:ring-foreground"
-          />
-          <Input
-            type="tel"
-            placeholder="Teléfono (10 dígitos)"
-            value={form.telefono}
-            onChange={handleChange("telefono")}
-            required
-            maxLength={10}
-            className="h-14 rounded-full bg-secondary px-6 text-base font-medium placeholder:text-muted-foreground border-0 focus-visible:ring-1 focus-visible:ring-foreground"
-          />
-          <Input
-            type="password"
-            placeholder="Contraseña"
-            value={form.password}
-            onChange={handleChange("password")}
-            required
-            className="h-14 rounded-full bg-secondary px-6 text-base font-medium placeholder:text-muted-foreground border-0 focus-visible:ring-1 focus-visible:ring-foreground"
-          />
-
-          {/* Terms checkbox */}
-          <label className="flex items-start gap-3 cursor-pointer pt-2">
-            <div
-              onClick={() => setAccepted(!accepted)}
-              className={`mt-0.5 h-5 w-5 shrink-0 rounded-full border transition-colors cursor-pointer ${accepted ? "bg-foreground border-foreground" : "border-muted-foreground"}`}
-            />
-            <span className="text-sm text-muted-foreground leading-relaxed">
-              Acepto los{" "}
-              <Link
-                href="#"
-                className="text-foreground underline underline-offset-4"
-              >
-                Términos y Condiciones
-              </Link>{" "}
-              y el{" "}
-              <Link
-                href="#"
-                className="text-foreground underline underline-offset-4"
-              >
-                Aviso de Privacidad
-              </Link>
-            </span>
-          </label>
-
-          <div className="pt-2">
-            <Button
-              type="submit"
-              size="lg"
-              disabled={loading || !accepted}
-              className="w-full h-14 rounded-full bg-foreground text-background font-bold text-base hover:bg-foreground/90 transition-all disabled:opacity-40"
-            >
-              {loading ? "Creando cuenta..." : "Continuar"}
-            </Button>
+        <div className="flex flex-1 flex-col justify-center">
+          <div className="mb-10">
+            <h2 className="text-4xl font-black tracking-tight text-foreground leading-none">
+              Crea tu cuenta.
+            </h2>
+            <p className="mt-4 text-base text-muted-foreground font-normal">
+              Tu dinero, siempre disponible.
+            </p>
           </div>
-        </form>
-      </div>
 
-      <p className="mt-8 text-center text-sm text-muted-foreground">
-        Ya tienes cuenta?{" "}
-        <Link
-          href="/login"
-          className="font-bold text-foreground hover:underline"
-        >
-          Iniciar sesión
-        </Link>
-      </p>
+          {step < 3 && <ProgressIndicator current={step} />}
+
+          <div
+            key={step}
+            className={`w-full ${goingForward ? "slide-forward" : "slide-backward"}`}
+          >
+            {step === 0 && (
+              <>
+                <h2 className="text-4xl font-black tracking-tight text-foreground leading-none">
+                  Tu cuenta
+                </h2>
+                <p className="mt-4 mb-8 text-base text-muted-foreground">
+                  Ingresa tus datos personales para empezar.
+                </p>
+                <AccountStep
+                  defaultValues={{ nombre: "", correo: "", password: "" }}
+                  onNext={() => setStep(1)}
+                />
+              </>
+            )}
+
+            {step === 1 && (
+              <>
+                <h2 className="text-4xl font-black tracking-tight text-foreground leading-none">
+                  Tu negocio
+                </h2>
+                <p className="mt-4 mb-8 text-base text-muted-foreground">
+                  Información de tu empresa o actividad profesional.
+                </p>
+                <BusinessStep
+                  defaultValues={{ businessName: "", rfc: "", curp: "" }}
+                  onNext={() => setStep(2)}
+                  onBack={() => setStep(0)}
+                />
+              </>
+            )}
+
+            {step === 2 && (
+              <>
+                <h2 className="text-4xl font-black tracking-tight text-foreground leading-none">
+                  Verifica tu teléfono
+                </h2>
+                <p className="mt-4 mb-8 text-base text-muted-foreground">
+                  Ingresa tu número para recibir un código de verificación.
+                </p>
+                <PhoneVerificationStep
+                  defaultValues={{ phone, otp: "" }}
+                  onComplete={(data) => {
+                    setPhone(data.phone);
+                    setStep(3);
+                  }}
+                  onBack={() => setStep(1)}
+                />
+              </>
+            )}
+
+            {step === 3 && (
+              <SuccessConfirmation
+                onResendOtp={() => setStep(2)}
+              />
+            )}
+          </div>
+        </div>
+
+        <p className="mt-8 text-center text-sm text-muted-foreground">
+          Ya tienes cuenta?{" "}
+          <Link
+            href="/login"
+            className="font-bold text-foreground hover:underline"
+          >
+            Iniciar sesión
+          </Link>
+        </p>
+      </div>
     </div>
   );
 }

@@ -2,7 +2,7 @@ export type TransactionEntityType = "deposit" | "advance" | "withdrawal";
 
 export type TransactionType = "deposit" | "advance" | "withdrawal" | "yield";
 
-export type TransactionStatus = "pending" | "completed" | "failed" | "liquidated";
+export type TransactionStatus = "pending" | "processing" | "completed" | "failed" | "liquidated";
 
 export type TransactionRow = {
   id: string;

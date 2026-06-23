@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { extractEtherfuseErrorMessage } from "@/lib/etherfuse/client";
+import { logger } from "@/lib/observability/logger";
+import type { LogContext } from "@/lib/observability/logger";
 
 export type SeyfErrorCode =
   | "spei_timeout"
@@ -98,10 +100,14 @@ export function toErrorResponse(
   e: unknown,
   context?: string,
 ): NextResponse<SeyfErrorBody> {
-  const tag = context ? `[seyf/${context}]` : "[seyf]";
+  const route = context ? `seyf/${context}` : "seyf";
+  const logCtx: LogContext = { route };
 
   if (e instanceof AppError) {
-    console.error(tag, e.code, e.message);
+    logCtx.error_code = e.code;
+    logCtx.status_code = e.statusCode;
+    logger.error(logCtx, `[${route}] ${e.code}: ${e.message}`);
+
     const messageEs =
       e.messageEs ??
       (e.code === "validation_error" ? e.message : null) ??
@@ -119,9 +125,11 @@ export function toErrorResponse(
   }
 
   if (isEtherfuseError(e)) {
-    // passing null as json falls through to the fallbackText branch, trimming and capping length.
     const internal = extractEtherfuseErrorMessage(null, e.message);
-    console.error(`${tag} provider error:`, internal);
+    logCtx.error_code = "provider_unavailable";
+    logCtx.provider = "etherfuse";
+    logger.error(logCtx, `[${route}] Etherfuse provider error: ${internal}`);
+
     return NextResponse.json(
       {
         error: {
@@ -135,7 +143,9 @@ export function toErrorResponse(
   }
 
   const internal = toErrorMessage(e, "unknown error");
-  console.error(tag, internal);
+  logCtx.error_code = "generic_error";
+  logger.error(logCtx, `[${route}] ${internal}`);
+
   const body: SeyfErrorBody & { debug_message?: string } = {
     error: {
       code: "generic_error",

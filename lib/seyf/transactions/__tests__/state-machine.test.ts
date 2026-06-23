@@ -27,9 +27,19 @@ describe("transaction state machine", () => {
     expect(isValidTransactionTransition("advance", "liquidated", "completed")).toBe(false);
   });
 
-  it("allows withdrawal pending terminal transitions", () => {
+  it("allows withdrawal pending transitions", () => {
+    expect(isValidTransactionTransition("withdrawal", "pending", "processing")).toBe(true);
     expect(isValidTransactionTransition("withdrawal", "pending", "completed")).toBe(true);
     expect(isValidTransactionTransition("withdrawal", "pending", "failed")).toBe(true);
+  });
+
+  it("allows withdrawal processing terminal transitions", () => {
+    expect(isValidTransactionTransition("withdrawal", "processing", "completed")).toBe(true);
+    expect(isValidTransactionTransition("withdrawal", "processing", "failed")).toBe(true);
+  });
+
+  it("rejects withdrawal processing -> pending", () => {
+    expect(isValidTransactionTransition("withdrawal", "processing", "pending")).toBe(false);
   });
 
   it("marks terminal statuses correctly", () => {
