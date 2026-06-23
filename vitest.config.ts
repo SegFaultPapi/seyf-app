@@ -11,7 +11,10 @@ export default defineConfig({
     globals: false,
     include: [
       "lib/etherfuse/__tests__/**/*.test.ts",
+      "lib/etherfuse/__tests__/**/*.test.ts",
       "lib/seyf/transactions/__tests__/**/*.test.ts",
+      "lib/services/**/*.test.ts",
+      "__tests__/**/*.test.ts",
     ],
     exclude: ["node_modules/**"],
   },

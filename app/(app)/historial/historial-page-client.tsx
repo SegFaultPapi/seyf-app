@@ -11,8 +11,6 @@ import { MovementDetailSheet } from "@/components/app/movement-detail-sheet";
 import { iconForMovimientoTipo } from "@/components/app/movement-tipo-icons";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
-import { Skeleton } from "@/components/ui/skeleton";
-import { useTranslations } from "next-intl";
 import {
   HISTORIAL_POLL_EXTRA_DELAYS_MS,
   HISTORIAL_POLL_MS,
