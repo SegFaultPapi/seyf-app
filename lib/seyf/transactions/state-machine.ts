@@ -7,7 +7,8 @@ const DEPOSIT_TRANSITIONS: TransitionMap = {
 };
 
 const WITHDRAWAL_TRANSITIONS: TransitionMap = {
-  pending: ["completed", "failed"],
+  pending: ["processing", "completed", "failed"],
+  processing: ["completed", "failed"],
 };
 
 const ADVANCE_TRANSITIONS: TransitionMap = {

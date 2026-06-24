@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
+import useSWR from 'swr'
 import { AppBackLink } from '@/components/app/app-back-link'
 import { AppPageBody } from '@/components/app/app-page-body'
 import { Button } from '@/components/ui/button'
@@ -53,6 +54,14 @@ export default function EtherfuseRampDevClient({ anadirScreen = 'deposit' }: Eth
   const [kycGate, setKycGate] = useState<RampContextPayload | null>(null)
   const [kycLoading, setKycLoading] = useState(true)
   const [readiness, setReadiness] = useState<EtherfuseReadinessClientPayload | null>(null)
+
+  const walletAddr = etherfusePublicKeyHint?.trim() ?? wallet?.stellarAddress?.trim() ?? ''
+  
+  const { data: depositStatusData } = useSWR(
+    walletAddr ? `/api/deposit/status?wallet=${encodeURIComponent(walletAddr)}` : null,
+    (url: string) => fetch(url).then(res => res.json()),
+    { refreshInterval: (data: any) => (data?.status === 'pendiente' ? 10000 : 0) }
+  )
 
   const run = useCallback(async (label: string, fn: () => Promise<void>) => {
     setErr(null)
@@ -263,27 +272,64 @@ export default function EtherfuseRampDevClient({ anadirScreen = 'deposit' }: Eth
     const hasInstructions = Boolean(speiDetails)
     const bankSent = Boolean(fiatJson)
     const credited = Boolean(onrampTxSignature)
+    
+    const realPending = depositStatusData?.status === 'pendiente'
+    const realCompleted = depositStatusData?.status === 'completado'
+
     return [
       {
         label: 'Listo: tienes CLABE e importe',
         description: 'Copia los datos en tu app del banco.',
-        done: hasInstructions,
+        done: hasInstructions || realPending || realCompleted,
       },
       {
         label: 'Tu banco envió el dinero',
-        description:
-          'Esperamos tu transferencia. Si la app te lo pide, confirma abajo que ya enviaste.',
-        done: bankSent,
+        description: realPending ? 'Tiempo estimado: 5 minutos' : 'Esperamos tu transferencia. Si la app te lo pide, confirma abajo que ya enviaste.',
+        done: bankSent || realPending || realCompleted,
       },
       {
         label: 'Saldo en tu cuenta Seyf',
         description: 'Cuando acredite verás el movimiento.',
-        done: credited,
+        done: credited || realCompleted,
       },
     ]
-  }, [speiDetails, fiatJson, onrampTxSignature])
+  }, [speiDetails, fiatJson, onrampTxSignature, depositStatusData])
 
-  const showDepositProgress = Boolean(speiDetails || fiatJson || onrampTxSignature)
+  const showDepositProgress = Boolean(speiDetails || fiatJson || onrampTxSignature || depositStatusData?.status === 'pendiente')
+
+  const progressSection = showDepositProgress ? (
+    <section className="rounded-[1.25rem] border border-border bg-card/60 p-4">
+      <p className="text-sm font-bold text-foreground">Seguimiento del depósito</p>
+      <p className="mt-1 text-xs text-muted-foreground">
+        Así va tu transferencia; no hace falta entender términos técnicos.
+      </p>
+      <div className="mt-3 space-y-3">
+        {depositProgress.map((step) => (
+          <div
+            key={step.label}
+            className="rounded-xl border border-border/70 bg-background/50 px-3 py-2.5"
+          >
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-foreground">{step.label}</p>
+                <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground">
+                  {step.description}
+                </p>
+              </div>
+              <span
+                className={cn(
+                  'shrink-0 text-xs font-bold',
+                  step.done ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground',
+                )}
+              >
+                {step.done ? 'Listo' : 'Pendiente'}
+              </span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  ) : null
 
   if (anadirScreen === 'landing') {
     return (
@@ -342,6 +388,8 @@ export default function EtherfuseRampDevClient({ anadirScreen = 'deposit' }: Eth
             </Button>
           </section>
         )}
+
+        {progressSection}
 
         {err && (
           <p className="rounded-[1rem] border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
@@ -454,39 +502,7 @@ export default function EtherfuseRampDevClient({ anadirScreen = 'deposit' }: Eth
         </Button>
       ) : null}
 
-      {showDepositProgress ? (
-        <section className="rounded-[1.25rem] border border-border bg-card/60 p-4">
-          <p className="text-sm font-bold text-foreground">Seguimiento del depósito</p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Así va tu transferencia; no hace falta entender términos técnicos.
-          </p>
-          <div className="mt-3 space-y-3">
-            {depositProgress.map((step) => (
-              <div
-                key={step.label}
-                className="rounded-xl border border-border/70 bg-background/50 px-3 py-2.5"
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="text-sm font-semibold text-foreground">{step.label}</p>
-                    <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground">
-                      {step.description}
-                    </p>
-                  </div>
-                  <span
-                    className={cn(
-                      'shrink-0 text-xs font-bold',
-                      step.done ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground',
-                    )}
-                  >
-                    {step.done ? 'Listo' : 'Pendiente'}
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-      ) : null}
+      {progressSection}
 
       {err && (
         <p className="mt-6 rounded-[1rem] border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">

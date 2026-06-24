@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { notifyUser } from '@/lib/seyf/notifications/notify'
 import { notificationEvents } from '@/lib/seyf/notifications/types'
+import { withLogging } from '@/lib/observability/with-logging'
 
 export const runtime = 'nodejs'
 
@@ -30,7 +31,7 @@ function guardInternalSecret(req: Request): NextResponse | null {
   return null
 }
 
-export async function POST(req: Request) {
+async function handlePost(req: Request, _context: { params: Promise<Record<string, string | string[]>> }) {
   const denied = guardInternalSecret(req)
   if (denied) return denied
 
@@ -54,3 +55,5 @@ export async function POST(req: Request) {
 
   return NextResponse.json({ ok: true, result })
 }
+
+export const POST = withLogging(handlePost, { routeName: "internal/notify" })

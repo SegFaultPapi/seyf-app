@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
+import useSWR from 'swr'
 import { AppBackLink } from '@/components/app/app-back-link'
 import { AppPageBody } from '@/components/app/app-page-body'
 import { useSeyfWallet } from '@/lib/seyf/use-seyf-wallet'
@@ -17,6 +18,8 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Spinner } from '@/components/ui/spinner'
+import { Skeleton } from '@/components/ui/skeleton'
+import { cn } from '@/lib/utils'
 import {
   extractOrderIdFromCreateOrderResponse,
   pickOfframpOrderSummary,
@@ -66,6 +69,14 @@ export default function EtherfuseOfframpDevClient() {
   const [bankAccountLabel, setBankAccountLabel] = useState<string | null>(null)
   const [destinationValid, setDestinationValid] = useState(true)
   const [destinationReason, setDestinationReason] = useState<string | null>(null)
+
+  const walletAddr = wallet?.stellarAddress?.trim() ?? ''
+  
+  const { data: withdrawStatusData } = useSWR(
+    walletAddr ? `/api/withdraw/status?wallet=${encodeURIComponent(walletAddr)}` : null,
+    (url: string) => fetch(url).then(res => res.json()),
+    { refreshInterval: (data: any) => (data?.status === 'pendiente' ? 10000 : 0) }
+  )
 
   const onDestinationSelectionChange = useCallback((_s: WithdrawDestinationSelection) => {}, [])
 
@@ -332,6 +343,31 @@ export default function EtherfuseOfframpDevClient() {
     fallbackReason: kycGate?.kycReason ?? null,
   })
 
+  const realPending = withdrawStatusData?.status === 'pendiente'
+  const realCompleted = withdrawStatusData?.status === 'completado'
+
+  const withdrawProgress = useMemo(() => {
+    return [
+      {
+        label: 'Retiro solicitado',
+        description: 'Hemos recibido tu solicitud de retiro.',
+        done: realPending || realCompleted,
+      },
+      {
+        label: 'Procesando',
+        description: realPending ? 'Tiempo estimado: 2 horas en horario hábil' : 'El retiro está siendo procesado.',
+        done: realCompleted,
+      },
+      {
+        label: 'Completado',
+        description: 'El dinero fue enviado a tu cuenta bancaria.',
+        done: realCompleted,
+      },
+    ]
+  }, [realPending, realCompleted])
+
+  const showWithdrawProgress = realPending
+
   return (
     <AppPageBody className="space-y-6 pt-4">
       <AppBackLink href="/dashboard" />
@@ -378,6 +414,37 @@ export default function EtherfuseOfframpDevClient() {
               >
                 {item.label}
               </Link>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      {showWithdrawProgress ? (
+        <section className="rounded-[1.25rem] border border-border bg-card/60 p-4">
+          <p className="text-sm font-bold text-foreground">Seguimiento del retiro</p>
+          <div className="mt-3 space-y-3">
+            {withdrawProgress.map((step) => (
+              <div
+                key={step.label}
+                className="rounded-xl border border-border/70 bg-background/50 px-3 py-2.5"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-foreground">{step.label}</p>
+                    <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground">
+                      {step.description}
+                    </p>
+                  </div>
+                  <span
+                    className={cn(
+                      'shrink-0 text-xs font-bold',
+                      step.done ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground',
+                    )}
+                  >
+                    {step.done ? 'Listo' : 'Pendiente'}
+                  </span>
+                </div>
+              </div>
             ))}
           </div>
         </section>

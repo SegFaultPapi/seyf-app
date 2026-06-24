@@ -1,13 +1,19 @@
+export type CycleStatus = 'pending' | 'active' | 'completed' | 'failed'
+
 export type CycleRecord = {
   userId: string
-  /** Always 28 for this milestone. */
+  /** Unique job/cycle identifier from the deploy_capital job (e.g. "cycle-auto-<depositId>"). */
+  cycleId: string | null
   cycleDays: 28
+  status: CycleStatus
   principalMxn: number
+  etherfuseOrderId: string | null
+  mxneAmount: string | null
+  stablebondOrderId: string | null
   startDate: string
   expectedEndDate: string
   referenceRateAnnualPercent: number
   projectedYieldMxn: number
-  /** Idempotency: confirmed onchain tx hash (or mock) once deployed. */
   confirmedOnchainTx: string | null
   updatedAt: string
 }
@@ -56,13 +62,17 @@ export function upsertActiveCycleOnDepositConfirmed(params: {
 
   const principalMxn = (existing?.principalMxn ?? 0) + params.amountMxn
 
-  // Simple projection for 28d cycle.
   const projectedYieldMxn = principalMxn * (params.referenceRateAnnualPercent / 100) * (28 / 365)
 
   const next: CycleRecord = {
     userId: params.userId,
+    cycleId: existing?.cycleId ?? null,
     cycleDays: 28,
+    status: existing?.status ?? 'pending',
     principalMxn,
+    etherfuseOrderId: existing?.etherfuseOrderId ?? null,
+    mxneAmount: existing?.mxneAmount ?? null,
+    stablebondOrderId: existing?.stablebondOrderId ?? null,
     startDate,
     expectedEndDate,
     referenceRateAnnualPercent: params.referenceRateAnnualPercent,
@@ -78,16 +88,39 @@ export function upsertActiveCycleOnDepositConfirmed(params: {
 export function markCycleDeployedOnchain(params: {
   userId: string
   onchainTx: string
+  cycleId?: string
+  etherfuseOrderId?: string
+  mxneAmount?: string
+  stablebondOrderId?: string
   now?: Date
 }) {
   const s = store()
   const existing = s.activeByUserId.get(params.userId)
   if (!existing) return
-  if (existing.confirmedOnchainTx) return
 
   s.activeByUserId.set(params.userId, {
     ...existing,
+    status: 'active',
+    cycleId: params.cycleId ?? existing.cycleId,
     confirmedOnchainTx: params.onchainTx,
+    etherfuseOrderId: params.etherfuseOrderId ?? existing.etherfuseOrderId,
+    mxneAmount: params.mxneAmount ?? existing.mxneAmount,
+    stablebondOrderId: params.stablebondOrderId ?? existing.stablebondOrderId,
+    updatedAt: (params.now ?? new Date()).toISOString(),
+  })
+}
+
+export function markCycleFailed(params: {
+  userId: string
+  now?: Date
+}) {
+  const s = store()
+  const existing = s.activeByUserId.get(params.userId)
+  if (!existing) return
+
+  s.activeByUserId.set(params.userId, {
+    ...existing,
+    status: 'failed',
     updatedAt: (params.now ?? new Date()).toISOString(),
   })
 }

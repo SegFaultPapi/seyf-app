@@ -1,10 +1,8 @@
-import { runMockAutoInvest } from './investment-mvp.ts'
+import { deployCapital } from './capital-deploy'
+import { markCycleDeployedOnchain, markCycleFailed } from './cycle-store'
 import { notifyUser } from './notifications/notify.ts'
 import { fetchEtherfuseCetes28DayRateSnapshot } from '../etherfuse/cetes-rate.ts'
-import {
-  markCycleDeployedOnchain,
-  upsertActiveCycleOnDepositConfirmed,
-} from './cycle-store.ts'
+import { upsertActiveCycleOnDepositConfirmed } from './cycle-store.ts'
 
 type DepositStatus = 'confirmed' | 'deployed' | 'deploy_failed'
 
@@ -50,6 +48,10 @@ function jobKey(input: EnqueueAutoDeployForDepositInput): string {
   return `deposit:${input.depositId}`
 }
 
+function mxnToCents(amountMxn: number): number {
+  return Math.round(amountMxn * 100)
+}
+
 async function runWorkerLoop() {
   const s = store()
   if (s.running) return
@@ -68,7 +70,6 @@ async function runWorkerLoop() {
 async function performAutoDeploy(input: EnqueueAutoDeployForDepositInput) {
   const s = store()
 
-  // Idempotency: if we already confirmed an onchain tx for this deposit, do nothing.
   if (s.onchainTxByDepositId.has(input.depositId)) {
     s.depositStatus.set(input.depositId, 'deployed')
     return
@@ -78,30 +79,31 @@ async function performAutoDeploy(input: EnqueueAutoDeployForDepositInput) {
     const userId = input.userId?.trim() ? input.userId.trim() : 'demo-user'
     const amountMxn = input.amountMxn ?? 0
 
-    // Snapshot CETES 28d reference rate at deployment time.
     const rateSnap = await fetchEtherfuseCetes28DayRateSnapshot()
 
-    // Create/update active cycle on confirmed deposit; supports partial deposits.
     upsertActiveCycleOnDepositConfirmed({
       userId,
       amountMxn,
       referenceRateAnnualPercent: rateSnap.annualRatePercent,
     })
 
-    // MVP: reuse existing simulated invest pipeline. This stands in for M04 service.
-    const result = await runMockAutoInvest({
-      depositId: input.depositId,
+    const deployResult = await deployCapital({
       userId,
-      amountMxn,
+      amountMxn: mxnToCents(amountMxn),
+      cycleId: `cycle-auto-${input.depositId}`,
     })
 
-    // Mark as deployed (simulated onchain confirmation).
     s.depositStatus.set(input.depositId, 'deployed')
-    const onchainTx = result.run.stellarTxHash ?? 'mock'
+    const onchainTx = deployResult.stablebondOrder.confirmedTxSignature ?? deployResult.onrampTxHash ?? 'confirmed'
     s.onchainTxByDepositId.set(input.depositId, onchainTx)
-    markCycleDeployedOnchain({ userId, onchainTx })
+    markCycleDeployedOnchain({
+      userId,
+      onchainTx,
+      etherfuseOrderId: deployResult.onrampOrderId,
+      mxneAmount: deployResult.mxneAmount,
+      stablebondOrderId: deployResult.stablebondOrder.orderId,
+    })
 
-    // M09 hook
     void notifyUser(userId, 'deposit_deployed', {
       depositId: input.depositId,
       amountMxn,
@@ -110,16 +112,16 @@ async function performAutoDeploy(input: EnqueueAutoDeployForDepositInput) {
       console.error('[seyf][notifications] deposit_deployed', error)
     })
 
-    // Dashboard updates immediately via existing polling; this is a placeholder hook point.
-    // In production, this should emit a websocket/SSE event.
     console.info('[seyf][auto-deploy] deposit deployed', {
       depositId: input.depositId,
       amountMxn,
+      onrampOrderId: deployResult.onrampOrderId,
+      stablebondOrderId: deployResult.stablebondOrder.orderId,
     })
   } catch (error) {
     s.depositStatus.set(input.depositId, 'deploy_failed')
+    markCycleFailed({ userId: input.userId?.trim() || 'demo-user' })
 
-    // Admin alert hook (MVP: log).
     console.error('[seyf][admin-alert] auto-deploy failed', {
       depositId: input.depositId,
       error: error instanceof Error ? error.message : String(error),
@@ -133,17 +135,13 @@ export async function enqueueAutoDeployForDeposit(input: EnqueueAutoDeployForDep
   const s = store()
   const key = jobKey(input)
 
-  // Idempotency: don’t enqueue duplicates.
   if (s.queuedKeys.has(key)) return
-
-  // If already deployed, don't enqueue.
   if (s.onchainTxByDepositId.has(input.depositId)) return
 
   s.queuedKeys.add(key)
   s.depositStatus.set(input.depositId, 'confirmed')
   s.jobs.push({ key, input, createdAt: Date.now() })
 
-  // Non-blocking worker.
   void runWorkerLoop().catch((error) => {
     console.error('[seyf][auto-deploy] worker loop crashed', error)
   })

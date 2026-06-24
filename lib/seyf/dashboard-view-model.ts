@@ -10,7 +10,6 @@ import {
 } from "@/lib/seyf/dashboard-cetes-saldo";
 import { resolveEtherfuseRampContext } from "@/lib/seyf/etherfuse-ramp-context";
 import { fetchUserMovements } from "@/lib/seyf/user-movements";
-import { getActiveCycle } from "@/lib/seyf/cycle-store";
 import {
   DASHBOARD_MOVEMENTS_PREVIEW_LIMIT,
   type DashboardViewModel,
@@ -94,7 +93,6 @@ export async function buildDashboardViewModel(options?: {
   ]);
 
   const ledgerPrincipal = ledgerPrincipalMxn(investRuns);
-  const activeCycle = ledgerUserKey ? getActiveCycle(ledgerUserKey) : null;
   const cyclePrincipal = activeCycle?.principalMxn ?? 0;
   let principalMxn: number;
   if (cetesSaldo.kind === "ok") principalMxn = cetesSaldo.principalMxn;

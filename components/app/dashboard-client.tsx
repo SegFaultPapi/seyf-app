@@ -135,6 +135,7 @@ export default function DashboardClient({ vm }: { vm: DashboardViewModel }) {
   );
   const [referralDismissCount, setReferralDismissCount] = useState(0);
   const [referralHiddenUntil, setReferralHiddenUntil] = useState(0);
+  const [completedBanner, setCompletedBanner] = useState<{ id: string; message: string } | null>(null);
 
   const dashboardSwrKey =
     wallet?.stellarAddress?.trim().length === 56 &&
@@ -479,6 +480,48 @@ export default function DashboardClient({ vm }: { vm: DashboardViewModel }) {
   }, [baseMovements, stellarMovements]);
 
   useEffect(() => {
+    if (!baseMovements || baseMovements.length === 0) return;
+    try {
+      const storedPending = JSON.parse(
+        window.localStorage.getItem("seyf_pending_movements") || "[]"
+      ) as string[];
+
+      const currentPending: string[] = [];
+      const newlyCompleted: UserMovement[] = [];
+
+      for (const mov of baseMovements) {
+        if (mov.estado === "pendiente") {
+          currentPending.push(mov.id);
+        } else if (mov.estado === "completado" && storedPending.includes(mov.id)) {
+          newlyCompleted.push(mov);
+        }
+      }
+
+      if (newlyCompleted.length > 0) {
+        const mov = newlyCompleted[0];
+        if (mov.tipo === "deposito") {
+          setCompletedBanner({
+            id: mov.id,
+            message: "¡Tu depósito llegó! Tu capital ya genera rendimiento.",
+          });
+        } else if (mov.tipo === "retiro") {
+          setCompletedBanner({
+            id: mov.id,
+            message: "¡Tu retiro se completó con éxito!",
+          });
+        }
+      }
+
+      window.localStorage.setItem(
+        "seyf_pending_movements",
+        JSON.stringify(currentPending)
+      );
+    } catch {
+      // noop
+    }
+  }, [baseMovements]);
+
+  useEffect(() => {
     if (!selected) return;
     const next = baseMovements.find((m) => m.id === selected.id);
     if (next) setSelected(next);
@@ -511,25 +554,6 @@ export default function DashboardClient({ vm }: { vm: DashboardViewModel }) {
         <Skeleton className="h-[22rem] rounded-[1.75rem] border border-border" />
         <Skeleton className="h-48 rounded-[1.5rem] border border-border" />
         <Skeleton className="h-40 rounded-[1.5rem] border border-border" />
-      </AppPageBody>
-    );
-  }
-
-  if (!wallet) {
-    return (
-      <AppPageBody className="space-y-4 pt-4">
-        <div className="rounded-[1.5rem] border border-border bg-card px-5 py-8 text-center">
-          <p className="text-sm font-bold text-foreground">{t('connectWallet')}</p>
-          <p className="mt-2 text-xs text-muted-foreground">
-            {t('connectWalletBody')}
-          </p>
-          <Button
-            asChild
-            className="mt-6 h-11 w-full max-w-xs rounded-full font-bold"
-          >
-            <Link href="/">Ir a conectar</Link>
-          </Button>
-        </div>
       </AppPageBody>
     );
   }
@@ -603,6 +627,24 @@ export default function DashboardClient({ vm }: { vm: DashboardViewModel }) {
           >
             {t('retry')}
           </Button>
+        </section>
+      )}
+
+      {completedBanner && (
+        <section className="relative overflow-hidden rounded-[1.25rem] border border-emerald-500/30 bg-emerald-500/10 p-4">
+          <button
+            type="button"
+            onClick={() => setCompletedBanner(null)}
+            className="absolute right-3 top-3 text-emerald-600 hover:text-emerald-800 dark:text-emerald-400 dark:hover:text-emerald-300"
+          >
+            <X className="size-4" />
+          </button>
+          <p className="text-sm font-bold text-emerald-800 dark:text-emerald-300">
+            ¡Operación completada!
+          </p>
+          <p className="mt-1 text-xs text-emerald-700 dark:text-emerald-400">
+            {completedBanner.message}
+          </p>
         </section>
       )}
 
@@ -1133,12 +1175,12 @@ export default function DashboardClient({ vm }: { vm: DashboardViewModel }) {
         <section className="relative overflow-hidden rounded-[1.6rem] border border-border bg-card p-5">
           <EmptyState
             variant="compact"
-            illustration="cycle"
-            title="Tu capital está listo para empezar a trabajar"
-            description="Abre tu primer ciclo de rendimiento en pesos invirtiendo en CETES de manera segura."
+            illustration="balance"
+            title={t('emptyStateTitle')}
+            description={t('emptyStateBody')}
             primaryAction={{
-              label: "Agregar fondos",
-              href: "/anadir",
+              label: t('emptyStateCta'),
+              href: "/depositar",
             }}
           />
         </section>

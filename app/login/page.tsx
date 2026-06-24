@@ -2,10 +2,12 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
 export default function LoginPage() {
+  const t = useTranslations("auth.login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -18,6 +20,7 @@ export default function LoginPage() {
 
   return (
     <div className="flex min-h-screen flex-col bg-background px-6 py-12">
+      <div className="mx-auto w-full max-w-md">
       {/* Header */}
       <div className="mb-12">
         <h1 className="text-4xl font-black tracking-tight text-foreground">
@@ -28,9 +31,7 @@ export default function LoginPage() {
       <div className="flex flex-1 flex-col justify-center">
         <div className="mb-10">
           <h2 className="text-4xl font-black tracking-tight text-foreground leading-none">
-            Bienvenido
-            <br />
-            de vuelta.
+            Bienvenido de vuelta.
           </h2>
           <p className="mt-4 text-base text-muted-foreground font-normal">
             Inicia sesión para ver tu ahorro y rendimientos.
@@ -69,23 +70,24 @@ export default function LoginPage() {
 
         <p className="mt-6 text-center text-sm text-muted-foreground">
           <Link
-            href="#"
+            href="/recuperar"
             className="underline underline-offset-4 hover:text-foreground"
           >
-            Olvide mi contrasena
+            {t("forgotPassword")}
           </Link>
         </p>
       </div>
 
-      <p className="mt-8 text-center text-sm text-muted-foreground">
-        No tienes cuenta?{" "}
-        <Link
-          href="/registro"
-          className="font-bold text-foreground hover:underline"
-        >
-          Crear cuenta
-        </Link>
-      </p>
+        <p className="mt-8 text-center text-sm text-muted-foreground">
+          No tienes cuenta?{" "}
+          <Link
+            href="/registro"
+            className="font-bold text-foreground hover:underline"
+          >
+            Crear cuenta
+          </Link>
+        </p>
+      </div>
     </div>
   );
 }
