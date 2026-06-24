@@ -180,6 +180,7 @@ Copy **`.env.example`** → **`.env.local`**. Do not commit secrets.
 | `ETHERFUSE_ONRAMP_TARGET_ASSET`    | Optional; force onramp target (`identifier` from `/ramp/assets`).                     |
 | `ETHERFUSE_OFFRAMP_SOURCE_ASSET`   | Optional; force offramp source asset.                                                 |
 | `ETHERFUSE_WEBHOOK_SECRET`         | Base64 secret to verify incoming webhooks.                                            |
+| `ETHERFUSE_WEBHOOK_SECRET_PREVIOUS` | Optional comma-separated previous base64 webhook secrets accepted during rotation.     |
 | `SEYF_ALLOW_ETHERFUSE_RAMP`        | In **production**, set `true` to enable ramp routes.                                  |
 | `SEYF_ALLOW_MOCK_INVEST`           | `true` to allow MVP invest / JSON ledger in production.                               |
 | `SEYF_ALLOW_KYC_RESET`             | Enables “reset trial” UI on `/identidad` outside development.                         |

@@ -1,6 +1,14 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import canonicalize from "canonicalize";
 
+/**
+ * Verifies SPEI outbound webhook signature (HMAC-SHA256 over JCS-canonicalized body).
+ *
+ * Aligned with the Etherfuse verification pattern:
+ *  - Guards against empty/missing secret
+ *  - Guards against non-canonicalizable payloads
+ *  - Uses timing-safe comparison
+ */
 export function verifySpeiOutboundWebhookSignature(
   payload: unknown,
   signatureHeader: string | null | undefined,

@@ -1,9 +1,17 @@
 import { NextResponse } from "next/server";
 import { verifySpeiOutboundWebhookSignature } from "@/lib/seyf/spei-webhook-hmac";
-import { isWebhookEventProcessed, getWithdrawalById } from "@/lib/seyf/withdrawal-service";
+import { getWithdrawalById } from "@/lib/seyf/withdrawal-service";
 import { enqueueSpeiWithdrawEvent } from "@/lib/seyf/spei-withdraw-processor";
 import { logger } from "@/lib/observability/logger";
 import { withLogging } from "@/lib/observability/with-logging";
+import { reserveWebhookEvent } from "@/lib/webhooks/replay-protection";
+import {
+  readWebhookBody,
+  webhookReplayStoreUnavailable,
+  webhookVerificationFailed,
+  webhookSecretMissing,
+  webhookRateLimit,
+} from "@/lib/webhooks/webhook-guard";
 
 export const runtime = "nodejs";
 
@@ -49,28 +57,27 @@ function extractSpeiOutboundEvent(payload: unknown): {
 }
 
 async function handlePost(req: Request) {
-  const raw = await req.text();
+  const logCtx = { route: "webhooks/spei/outbound" };
 
-  let payload: unknown;
-  try {
-    payload = JSON.parse(raw);
-  } catch {
-    return NextResponse.json({ error: "JSON inválido" }, { status: 400 });
-  }
+  const rateLimited = await webhookRateLimit(req, "spei/outbound");
+  if (rateLimited) return rateLimited;
+
+  const body = await readWebhookBody(req);
+  if (!body.ok) return body.response;
+  const { payload } = body;
 
   const secret = process.env.SPEI_OUTBOUND_WEBHOOK_SECRET?.trim();
   if (!secret) {
-    logger.error({ route: "webhooks/spei/outbound" }, "SPEI_OUTBOUND_WEBHOOK_SECRET not configured");
-    return NextResponse.json({ error: "Webhook secret not configured" }, { status: 503 });
+    return webhookSecretMissing(logCtx);
   }
 
   const sig = req.headers.get("x-signature");
   if (!verifySpeiOutboundWebhookSignature(payload, sig, secret)) {
-    return NextResponse.json({ error: "Firma inválida" }, { status: 401 });
+    return webhookVerificationFailed("signature_invalid", logCtx);
   }
 
   logger.debug(
-    { route: "webhooks/spei/outbound" },
+    logCtx,
     typeof payload === "object" && payload !== null
       ? JSON.stringify(payload).slice(0, 2500)
       : String(payload),
@@ -79,28 +86,19 @@ async function handlePost(req: Request) {
   const event = extractSpeiOutboundEvent(payload);
 
   if (!event.eventId) {
-    logger.warn({ route: "webhooks/spei/outbound" }, "Evento sin event_id");
+    logger.warn(logCtx, "Evento sin event_id");
     return NextResponse.json({ ok: true });
   }
 
   if (!event.withdrawalId) {
-    logger.warn({ route: "webhooks/spei/outbound", eventId: event.eventId }, "Evento sin withdrawal_id");
+    logger.warn({ ...logCtx, eventId: event.eventId }, "Evento sin withdrawal_id");
     return NextResponse.json({ ok: true });
   }
 
   if (!event.status || !["completed", "failed"].includes(event.status.toLowerCase())) {
     logger.warn(
-      { route: "webhooks/spei/outbound", eventId: event.eventId, status: event.status },
+      { ...logCtx, eventId: event.eventId, status: event.status },
       "Evento con status no manejado",
-    );
-    return NextResponse.json({ ok: true });
-  }
-
-  const alreadyProcessed = await isWebhookEventProcessed(event.eventId);
-  if (alreadyProcessed) {
-    logger.info(
-      { route: "webhooks/spei/outbound", eventId: event.eventId },
-      "Evento duplicado ignorado",
     );
     return NextResponse.json({ ok: true });
   }
@@ -108,13 +106,28 @@ async function handlePost(req: Request) {
   const withdrawal = await getWithdrawalById(event.withdrawalId);
   if (!withdrawal) {
     logger.warn(
-      { route: "webhooks/spei/outbound", withdrawalId: event.withdrawalId },
+      { ...logCtx, withdrawalId: event.withdrawalId },
       "Withdrawal no encontrado",
     );
     return NextResponse.json({ ok: true });
   }
 
   const status = event.status.toLowerCase() as "completed" | "failed";
+  const replayReservation = await reserveWebhookEvent(
+    event.eventId,
+    `spei-outbound:${status}`,
+    event.withdrawalId,
+  );
+  if (!replayReservation.ok) {
+    return webhookReplayStoreUnavailable({ ...logCtx, eventId: event.eventId });
+  }
+  if (!replayReservation.reserved) {
+    logger.info(
+      { ...logCtx, eventId: event.eventId },
+      "Evento duplicado ignorado",
+    );
+    return NextResponse.json({ ok: true });
+  }
 
   void enqueueSpeiWithdrawEvent({
     eventId: event.eventId,
