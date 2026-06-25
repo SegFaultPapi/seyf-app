@@ -1,13 +1,22 @@
 import { NextResponse } from "next/server";
 import type { EtherfuseKycStatus } from "@/lib/etherfuse/kyc";
 import { getEtherfuseConfig, strictEtherfuseProductionConfig } from "@/lib/etherfuse/config";
-import { verifyEtherfuseWebhookSignature } from "@/lib/etherfuse/webhook-verify";
+import { verifyEtherfuseWebhookWithSecrets } from "@/lib/etherfuse/webhook-verify";
 import { pickRampOrderTransactionDetails } from "@/lib/etherfuse/orders-api";
 import { enqueueAutoDeployForDeposit } from "@/lib/seyf/spei-deposit-auto-deploy";
 import { upsertStoredKycSnapshot } from "@/lib/seyf/kyc-state-store";
 import { appendKycAuditEvent } from "@/lib/seyf/kyc-audit";
 import { logger } from "@/lib/observability/logger";
 import { withLogging } from "@/lib/observability/with-logging";
+import { reserveWebhookEvent } from "@/lib/webhooks/replay-protection";
+import {
+  readWebhookBody,
+  webhookMalformed,
+  webhookReplayStoreUnavailable,
+  webhookVerificationFailed,
+  webhookSecretMissing,
+  webhookRateLimit,
+} from "@/lib/webhooks/webhook-guard";
 
 export const runtime = "nodejs";
 
@@ -83,9 +92,36 @@ function extractKycUpdateEvent(payload: unknown): {
   };
 }
 
+function extractEventId(payload: unknown): string | null {
+  const root = asObject(payload);
+  if (!root) return null;
+  return pickString(root, ["id", "eventId", "webhookId", "event_id"]);
+}
+
+function extractEventType(payload: unknown): string {
+  return pickString(asObject(payload) ?? {}, ["event", "eventType", "type", "name"]) ?? "unknown";
+}
+
+function extractWebhookTimestamp(req: Request, payload: unknown): string | null {
+  return (
+    req.headers.get("x-timestamp") ??
+    req.headers.get("x-webhook-timestamp") ??
+    req.headers.get("x-etherfuse-timestamp") ??
+    pickString(asObject(payload) ?? {}, ["createdAt", "timestamp", "occurredAt"])
+  );
+}
+
+function etherfuseWebhookSecrets(primarySecret: string): string[] {
+  const previousSecrets = (process.env.ETHERFUSE_WEBHOOK_SECRET_PREVIOUS ?? "")
+    .split(",")
+    .map((secret) => secret.trim())
+    .filter(Boolean);
+  return [primarySecret, ...previousSecrets];
+}
+
 /**
  * POST /api/webhooks/etherfuse
- * Configura la URL en devnet (Ramp → Webhooks) apuntando a tu dominio + esta ruta.
+ * Configura la URL en devnet (Ramp -> Webhooks) apuntando a tu dominio + esta ruta.
  * Secreto en ETHERFUSE_WEBHOOK_SECRET (base64, el que devuelve create webhook una sola vez).
  *
  * @see https://docs.etherfuse.com/guides/verifying-webhooks
@@ -107,10 +143,25 @@ async function handlePost(req: Request, _context: { params: Promise<Record<strin
       return NextResponse.json({ error: "Firma inválida" }, { status: 401 });
     }
   } else if (strictEtherfuseProductionConfig()) {
-    return NextResponse.json(
-      { error: "ETHERFUSE_WEBHOOK_SECRET no configurado" },
-      { status: 503 },
+    return webhookSecretMissing(logCtx);
+  }
+
+  const eventId = extractEventId(payload);
+  if (!eventId) {
+    return webhookMalformed("missing_event_id", logCtx);
+  }
+
+  const eventType = extractEventType(payload);
+  const replayReservation = await reserveWebhookEvent(eventId, eventType);
+  if (!replayReservation.ok) {
+    return webhookReplayStoreUnavailable({ ...logCtx, eventId });
+  }
+  if (!replayReservation.reserved) {
+    logger.info(
+      { ...logCtx, eventId },
+      "Duplicate webhook event ignored",
     );
+    return NextResponse.json({ ok: true });
   }
 
   logger.debug(
