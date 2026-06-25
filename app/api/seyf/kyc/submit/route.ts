@@ -19,11 +19,14 @@ import {
 import { AppError, toErrorResponse } from '@/lib/seyf/api-error'
 import { rateLimitResponse } from '@/lib/seyf/redis-guards'
 import { normalizeDateOfBirthToIso } from '@/lib/seyf/normalize-date-of-birth'
+import { validateCurpChecksum } from '@/lib/seyf/curp-validator'
+import { isDatabaseConfigured, query } from '@/lib/seyf/db/client'
 import {
   isEtherfuseTestnetBankAutofillActive,
   getTestnetSyntheticClabe,
 } from '@/lib/seyf/etherfuse-testnet-bank-autofill'
 import { createCustomerBankAccount } from '@/lib/etherfuse/bank-accounts'
+import { appendKycAuditEvent } from '@/lib/seyf/kyc-audit'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -71,6 +74,13 @@ const bodySchema = z.object({
       .transform((arr) => arr.filter((x) => x.value.trim().length > 0))
       .pipe(z.array(z.object({ id: z.string().optional(), type: z.string(), value: z.string() })).min(1)),
   }),
+  businessData: z
+    .object({
+      businessName: z.string().trim().min(1),
+      businessCategory: z.string().trim().min(1),
+      businessAddress: z.string().trim().min(1),
+    })
+    .optional(),
 })
 
 function mapKycProviderSetupError(message: string): AppError | null {
@@ -127,6 +137,21 @@ export async function POST(req: Request) {
       })
     }
 
+    // CURP checksum validation (RENAPO algorithm)
+    const curpEntry = parsed.data.identity.idNumbers.find((n) => n.type === 'mx_curp')
+    if (curpEntry) {
+      const curpNorm = curpEntry.value.trim().toUpperCase()
+      if (!validateCurpChecksum(curpNorm)) {
+        throw new AppError('validation_error', {
+          statusCode: 400,
+          retryable: false,
+          messageEs:
+            'El CURP ingresado no es válido. Verifica que los 18 caracteres sean correctos.',
+          message: `Invalid CURP checksum: ${curpNorm}`,
+        })
+      }
+    }
+
     // Redis-first: pasa publicKey para buscar sesión guardada por wallet
     const existing = await getEtherfuseOnboardingSession(publicKey)
     const fresh = newEtherfuseOnboardingIds()
@@ -136,6 +161,7 @@ export async function POST(req: Request) {
       normalizeStellarPublicKey(existing.publicKey) === publicKey &&
       !!existing.customerId &&
       !!existing.bankAccountId
+    const auditEvent = hasMatchingSession ? 'resubmit' : 'submit'
 
     await saveEtherfuseOnboardingSession({
       customerId: ids.customerId,
@@ -316,6 +342,13 @@ export async function POST(req: Request) {
       }
     }
 
+    await appendKycAuditEvent({
+      event: auditEvent,
+      customerId: resolvedCustomerId,
+      walletPublicKey: publicKey,
+      status: submission?.status ?? null,
+    })
+
     return NextResponse.json(
       {
         ok: true,
@@ -329,15 +362,20 @@ export async function POST(req: Request) {
     )
   } catch (e) {
     const base = toErrorResponse(e, 'kyc/submit')
-    // Always include debug_message so Vercel logs + client console show the exact failure
-    const body = (await base.json()) as { error?: unknown }
-    const debugMsg = e instanceof Error ? e.message : String(e)
-    return NextResponse.json(
-      {
-        ...(typeof body === 'object' && body ? body : {}),
-        debug_message: debugMsg,
-      },
-      { status: base.status, headers: { 'Cache-Control': 'no-store' } },
-    )
+    const body = (await base.json().catch(() => ({}))) as { error?: unknown }
+    if (process.env.NODE_ENV !== 'production' && process.env.SEYF_API_DEBUG_ERRORS === 'true') {
+      const debugMsg = e instanceof Error ? e.message : String(e)
+      return NextResponse.json(
+        {
+          ...(typeof body === 'object' && body ? body : {}),
+          debug_message: debugMsg,
+        },
+        { status: base.status, headers: { 'Cache-Control': 'no-store' } },
+      )
+    }
+    return NextResponse.json(body, {
+      status: base.status,
+      headers: { 'Cache-Control': 'no-store' },
+    })
   }
 }

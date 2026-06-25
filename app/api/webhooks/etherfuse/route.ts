@@ -5,6 +5,7 @@ import { verifyEtherfuseWebhookSignature } from "@/lib/etherfuse/webhook-verify"
 import { pickRampOrderTransactionDetails } from "@/lib/etherfuse/orders-api";
 import { enqueueAutoDeployForDeposit } from "@/lib/seyf/spei-deposit-auto-deploy";
 import { upsertStoredKycSnapshot } from "@/lib/seyf/kyc-state-store";
+import { appendKycAuditEvent } from "@/lib/seyf/kyc-audit";
 import { logger } from "@/lib/observability/logger";
 import { withLogging } from "@/lib/observability/with-logging";
 
@@ -20,6 +21,24 @@ function pickString(obj: Record<string, unknown>, keys: string[]): string | null
     if (typeof value === "string" && value.trim()) return value.trim();
   }
   return null;
+}
+
+function maskValue(value: string | null | undefined): string | null {
+  if (!value) return null;
+  if (value.length <= 6) return `${value[0]}***`;
+  return `${value.slice(0, 3)}***${value.slice(-2)}`;
+}
+
+function summarizePayloadForLogs(payload: unknown) {
+  const root = asObject(payload) ?? {};
+  const data = asObject(root.data) ?? asObject(root.payload) ?? root;
+
+  return {
+    eventType: pickString(root, ["event", "eventType", "type", "name"]),
+    customerId: maskValue(pickString(data, ["customerId", "customer_id"])),
+    walletPublicKey: maskValue(pickString(data, ["walletPublicKey", "wallet_public_key", "pubkey", "publicKey"])),
+    status: pickString(data, ["status"]),
+  };
 }
 
 function isKycStatus(value: string): value is EtherfuseKycStatus {
@@ -77,7 +96,7 @@ async function handlePost(req: Request, _context: { params: Promise<Record<strin
   try {
     payload = JSON.parse(raw) as unknown;
   } catch {
-    return NextResponse.json({ error: "JSON inv\u00e1lido" }, { status: 400 });
+    return NextResponse.json({ error: "JSON inválido" }, { status: 400 });
   }
 
   const { webhookSecret: secret } = getEtherfuseConfig();
@@ -85,7 +104,7 @@ async function handlePost(req: Request, _context: { params: Promise<Record<strin
 
   if (secret) {
     if (!verifyEtherfuseWebhookSignature(payload, sig, secret)) {
-      return NextResponse.json({ error: "Firma inv\u00e1lida" }, { status: 401 });
+      return NextResponse.json({ error: "Firma inválida" }, { status: 401 });
     }
   } else if (strictEtherfuseProductionConfig()) {
     return NextResponse.json(
@@ -95,10 +114,8 @@ async function handlePost(req: Request, _context: { params: Promise<Record<strin
   }
 
   logger.debug(
-    { route: "webhooks/etherfuse" },
-    typeof payload === "object" && payload !== null
-      ? JSON.stringify(payload).slice(0, 2500)
-      : String(payload),
+    { route: "webhooks/etherfuse", payload: summarizePayloadForLogs(payload) },
+    "Etherfuse webhook received",
   );
 
   const kyc = extractKycUpdateEvent(payload);
@@ -115,6 +132,20 @@ async function handlePost(req: Request, _context: { params: Promise<Record<strin
       eventId: kyc.eventId,
       eventTimestamp: kyc.eventTimestamp,
     });
+    try {
+      await appendKycAuditEvent({
+        event: "update",
+        customerId: kyc.customerId,
+        walletPublicKey: kyc.walletPublicKey,
+        status: kyc.status,
+        eventId: kyc.eventId,
+      });
+    } catch (auditError) {
+      logger.warn(
+        { route: "webhooks/etherfuse/kyc", error: auditError instanceof Error ? auditError.message : String(auditError) },
+        "KYC audit event write failed",
+      );
+    }
     logger.info(
       { route: "webhooks/etherfuse/kyc", customerId: kyc.customerId, status: kyc.status, updated: result.updated },
       `KYC update processed: ${kyc.status}`,

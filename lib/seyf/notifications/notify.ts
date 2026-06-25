@@ -72,8 +72,10 @@ export function buildSmsCopy<E extends NotificationEvent>(
       const reason = d.reason?.trim()
       return `${amount ? `No pudimos completar tu retiro por ${amount}.` : 'No pudimos completar tu retiro.'} Tu dinero sigue protegido.${reason ? ` Revisa: ${reason}.` : ''} Vuelve a intentarlo desde Seyf.`
     }
-    case 'kyc_approved':
-      return 'Tu cuenta Seyf ya quedo verificada. Ya puedes avanzar con tus movimientos con mas agilidad.'
+    case 'kyc_approved': {
+      const limit = formatCurrencyMxn(d.amountMxn) || '$20,000 MXN'
+      return `Tu cuenta está verificada. Ya puedes depositar hasta ${limit}.`
+    }
     case 'kyc_rejected':
       return `Tu verificacion necesita otro intento.${d.reason?.trim() ? ` Revisa: ${d.reason.trim()}.` : ''} Corrige tus datos y vuelve a intentarlo en Seyf.`
     default: {
