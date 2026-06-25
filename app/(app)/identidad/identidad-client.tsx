@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { CheckCircle2 } from "lucide-react";
 import {
+  Fragment,
   type ChangeEvent,
   type FormEvent,
   useCallback,
@@ -26,6 +27,7 @@ import {
   MAX_KYC_IMAGE_FILE_BYTES,
   kycDocumentsFailureMessageEs,
 } from "@/lib/seyf/kyc-upload-limits";
+import { validateCurpChecksum } from "@/lib/seyf/curp-validator";
 
 const KYC_PENDING_UI_KEY = "seyf_kyc_pending_ui";
 /** Datos del formulario KYC para pre-rellenar el alta CLABE cuando el usuario ya esté aprobado. */
@@ -220,6 +222,53 @@ function kycStatusHint(status: EtherfuseKycSnapshot["status"]): string {
   }
 }
 
+const STEP_LABELS = ["Datos personales", "Tu negocio", "Documentos"] as const;
+
+function StepIndicator({ current }: { current: 1 | 2 | 3 }) {
+  return (
+    <div className="mb-8 flex items-start gap-0">
+      {STEP_LABELS.map((label, i) => {
+        const n = i + 1;
+        const done = n < current;
+        const active = n === current;
+        return (
+          <Fragment key={n}>
+            <div className="flex flex-col items-center gap-1.5 min-w-0 flex-shrink-0">
+              <div
+                className={cn(
+                  "flex size-7 items-center justify-center rounded-full text-xs font-bold transition-colors",
+                  done && "bg-emerald-500/20 text-emerald-600 dark:text-emerald-400",
+                  active && "bg-foreground text-background",
+                  !done && !active && "bg-secondary text-muted-foreground",
+                )}
+                aria-current={active ? "step" : undefined}
+              >
+                {done ? "✓" : n}
+              </div>
+              <span
+                className={cn(
+                  "text-[10px] font-medium text-center whitespace-nowrap",
+                  active ? "text-foreground" : "text-muted-foreground",
+                )}
+              >
+                {label}
+              </span>
+            </div>
+            {i < STEP_LABELS.length - 1 && (
+              <div
+                className={cn(
+                  "flex-1 h-px mt-3.5 mx-2",
+                  done ? "bg-emerald-400/50" : "bg-border",
+                )}
+              />
+            )}
+          </Fragment>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function IdentidadClient({
   initialSession,
   initialKyc,
@@ -249,6 +298,23 @@ export default function IdentidadClient({
     idBack: string | null;
     selfie: string | null;
   }>({ idFront: null, idBack: null, selfie: null });
+
+  // Multi-step form state
+  const [step, setStep] = useState<1 | 2 | 3>(1);
+  const [step1, setStep1] = useState({
+    givenName: "", paternalLastName: "", maternalLastName: "",
+    email: "", phoneNumber: "", occupation: "", dateOfBirth: "",
+    curp: "", rfc: "",
+    street: "", city: "", region: "", postalCode: "", country: "MX",
+  });
+  const [step2, setStep2] = useState({
+    businessName: "", businessCategory: "", businessAddress: "",
+  });
+  const [step1Error, setStep1Error] = useState<string | null>(null);
+  const [step2Error, setStep2Error] = useState<string | null>(null);
+  const [idFrontFile, setIdFrontFile] = useState<File | null>(null);
+  const [idBackFile, setIdBackFile] = useState<File | null>(null);
+  const [selfieFile, setSelfieFile] = useState<File | null>(null);
 
   const [speiClabe, setSpeiClabe] = useState("");
   const [baGiven, setBaGiven] = useState("");
@@ -484,6 +550,38 @@ export default function IdentidadClient({
     }
   };
 
+  const handleNext = () => {
+    if (step === 1) {
+      const { givenName, paternalLastName, dateOfBirth, curp } = step1;
+      if (!givenName.trim() || !paternalLastName.trim() || !dateOfBirth) {
+        setStep1Error("Completa nombre, apellido paterno y fecha de nacimiento.");
+        return;
+      }
+      const curpNorm = curp.trim().toUpperCase();
+      if (
+        curpNorm.length > 0 &&
+        !/^[A-Z]{4}\d{6}[HM][A-Z]{2}[A-Z]{3}[A-Z0-9]\d$/.test(curpNorm)
+      ) {
+        setStep1Error("La CURP tiene formato inválido (18 caracteres requeridos).");
+        return;
+      }
+      if (curpNorm.length > 0 && !validateCurpChecksum(curpNorm)) {
+        setStep1Error("El CURP ingresado no es válido (error de dígito verificador).");
+        return;
+      }
+      setStep1Error(null);
+      setStep(2);
+    } else if (step === 2) {
+      const { businessName, businessCategory, businessAddress } = step2;
+      if (!businessName.trim() || !businessCategory || !businessAddress.trim()) {
+        setStep2Error("Completa todos los campos de tu negocio.");
+        return;
+      }
+      setStep2Error(null);
+      setStep(3);
+    }
+  };
+
   const onSubmit = (e: FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -497,32 +595,19 @@ export default function IdentidadClient({
         );
         return;
       }
-      const fd = new FormData(e.currentTarget as HTMLFormElement);
-      const curpValue = String(fd.get("curp") ?? "")
-        .trim()
-        .toUpperCase();
-      const rfcValue = String(fd.get("rfc") ?? "")
-        .trim()
-        .toUpperCase();
-      const givenName = String(fd.get("givenName") ?? "").trim();
-      const paternalLastName = String(fd.get("paternalLastName") ?? "").trim();
-      const maternalLastName = String(fd.get("maternalLastName") ?? "").trim();
+
+      const curpValue = step1.curp.trim().toUpperCase();
+      const rfcValue = step1.rfc.trim().toUpperCase();
+      const givenName = step1.givenName.trim();
+      const paternalLastName = step1.paternalLastName.trim();
+      const maternalLastName = step1.maternalLastName.trim();
       const familyName = [paternalLastName, maternalLastName]
         .filter(Boolean)
         .join(" ")
         .trim();
-      const idFrontFile = (fd.get("idFront") as File | null) ?? null;
-      const idBackFile = (fd.get("idBack") as File | null) ?? null;
-      const selfieFile = (fd.get("selfie") as File | null) ?? null;
 
-      const frontErr = validateImageFile(
-        idFrontFile,
-        "Frente de identificación",
-      );
-      const backErr = validateImageFile(
-        idBackFile,
-        "Reverso de identificación",
-      );
+      const frontErr = validateImageFile(idFrontFile, "Frente de identificación");
+      const backErr = validateImageFile(idBackFile, "Reverso de identificación");
       const selfieErr = validateImageFile(selfieFile, "Selfie");
       const validationErr = frontErr ?? backErr ?? selfieErr;
       if (validationErr) {
@@ -530,22 +615,14 @@ export default function IdentidadClient({
         return;
       }
 
-      const dateOfBirth = normalizeDateOfBirthToIso(
-        String(fd.get("dateOfBirth") ?? ""),
-      );
+      const dateOfBirth = normalizeDateOfBirthToIso(step1.dateOfBirth);
       if (!dateOfBirth) {
-        setError(
-          "Indica una fecha de nacimiento válida (usa el selector de fecha).",
-        );
+        setError("Indica una fecha de nacimiento válida (usa el selector de fecha).");
         return;
       }
 
-      const countryRaw = String(fd.get("country") ?? "MX")
-        .trim()
-        .toUpperCase();
-      const countryCode = countryRaw.slice(0, 2) || "MX";
+      const countryCode = step1.country.trim().slice(0, 2).toUpperCase() || "MX";
 
-      // Only include idNumbers entries that have a non-empty value
       const rawIdNumbers = [
         curpValue ? { type: "mx_curp", value: curpValue } : null,
         rfcValue ? { type: "mx_rfc", value: rfcValue } : null,
@@ -559,23 +636,27 @@ export default function IdentidadClient({
       const payload = {
         publicKey: connectedPublicKey,
         identity: {
-          email: String(fd.get("email") ?? ""),
-          phoneNumber: String(fd.get("phoneNumber") ?? ""),
-          occupation: String(fd.get("occupation") ?? ""),
-          name: {
-            givenName,
-            familyName,
-          },
+          email: step1.email,
+          phoneNumber: step1.phoneNumber,
+          occupation: step1.occupation,
+          name: { givenName, familyName },
           dateOfBirth,
           address: {
-            street: String(fd.get("street") ?? ""),
-            city: String(fd.get("city") ?? ""),
-            region: String(fd.get("region") ?? ""),
-            postalCode: String(fd.get("postalCode") ?? ""),
+            street: step1.street,
+            city: step1.city,
+            region: step1.region,
+            postalCode: step1.postalCode,
             country: countryCode,
           },
           idNumbers: rawIdNumbers,
         },
+        businessData: step2.businessName
+          ? {
+              businessName: step2.businessName,
+              businessCategory: step2.businessCategory,
+              businessAddress: step2.businessAddress,
+            }
+          : undefined,
       };
       const http = await fetch("/api/seyf/kyc/submit", {
         method: "POST",
@@ -688,9 +769,9 @@ export default function IdentidadClient({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             customerInfo: {
-              email: String(fd.get("email") ?? "") || undefined,
-              phone: String(fd.get("phoneNumber") ?? "") || undefined,
-              occupation: String(fd.get("occupation") ?? "") || undefined,
+              email: step1.email || undefined,
+              phone: step1.phoneNumber || undefined,
+              occupation: step1.occupation || undefined,
               additionalInfo: {
                 curp: curpValue || undefined,
                 rfc: rfcValue || undefined,
@@ -727,9 +808,9 @@ export default function IdentidadClient({
         window.sessionStorage.setItem(
           KYC_BANK_PREFILL_KEY,
           JSON.stringify({
-            givenName,
-            paternalLastName,
-            maternalLastName,
+            givenName: step1.givenName.trim(),
+            paternalLastName: step1.paternalLastName.trim(),
+            maternalLastName: step1.maternalLastName.trim(),
             dateOfBirth,
             curp: curpValue,
             rfc: rfcValue,
@@ -1045,7 +1126,8 @@ export default function IdentidadClient({
             Estado actual: pendiente de aprobación
           </p>
           <p className="mt-2 text-sm text-[#4f6b5f] dark:text-[#d2e9df]">
-            Estamos validando tus datos. Esto puede tardar algunos minutos.
+            Estamos validando tus datos. El proceso de revisión toma aproximadamente{" "}
+            <span className="font-semibold">24 horas</span> en el piloto.
           </p>
         </div>
 
@@ -1142,6 +1224,8 @@ export default function IdentidadClient({
         </section>
       ) : null}
 
+      <StepIndicator current={step} />
+
       <form onSubmit={onSubmit} className="space-y-6">
         {!wallet?.publicKey ? (
           <div className="rounded-[1.25rem] border border-border bg-secondary p-4">
@@ -1166,203 +1250,308 @@ export default function IdentidadClient({
           </div>
         ) : null}
 
-        <Input
-          name="givenName"
-          placeholder="Nombre(s)"
-          required
-          className="h-12 rounded-xl"
-          disabled={!canSubmitForm}
-          autoComplete="given-name"
-        />
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Input
-            name="paternalLastName"
-            placeholder="Apellido paterno"
-            required
-            className="h-12 rounded-xl"
-            disabled={!canSubmitForm}
-            autoComplete="family-name"
-          />
-          <Input
-            name="maternalLastName"
-            placeholder="Apellido materno"
-            required
-            className="h-12 rounded-xl"
-            disabled={!canSubmitForm}
-          />
-        </div>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Input
-            name="email"
-            type="email"
-            placeholder="Correo electrónico"
-            required
-            className="h-12 rounded-xl"
-            disabled={!canSubmitForm}
-          />
-          <Input
-            name="phoneNumber"
-            placeholder="Teléfono (+521234567890)"
-            required
-            minLength={7}
-            className="h-12 rounded-xl"
-            disabled={!canSubmitForm}
-          />
-        </div>
-        <Input
-          name="occupation"
-          placeholder="Ocupación"
-          required
-          className="h-12 rounded-xl"
-          disabled={!canSubmitForm}
-        />
-        <Input
-          name="dateOfBirth"
-          type="date"
-          required
-          className="h-12 rounded-xl"
-          aria-label="Fecha de nacimiento"
-          disabled={!canSubmitForm}
-        />
-        <Input
-          name="street"
-          placeholder="Calle y número"
-          required
-          className="h-12 rounded-xl"
-          disabled={!canSubmitForm}
-        />
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Input
-            name="city"
-            placeholder="Ciudad"
-            required
-            className="h-12 rounded-xl"
-            disabled={!canSubmitForm}
-          />
-          <Input
-            name="region"
-            placeholder="Estado"
-            required
-            className="h-12 rounded-xl"
-            disabled={!canSubmitForm}
-          />
-        </div>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Input
-            name="postalCode"
-            placeholder="Código postal"
-            required
-            className="h-12 rounded-xl"
-            disabled={!canSubmitForm}
-          />
-          <Input
-            name="country"
-            placeholder="País ISO-2 (MX)"
-            defaultValue="MX"
-            required
-            maxLength={2}
-            className="h-12 rounded-xl uppercase"
-            disabled={!canSubmitForm}
-          />
-        </div>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Input
-            name="curp"
-            placeholder="CURP"
-            required
-            className="h-12 rounded-xl"
-            disabled={!canSubmitForm}
-          />
-          <Input
-            name="rfc"
-            placeholder="RFC"
-            required
-            className="h-12 rounded-xl"
-            disabled={!canSubmitForm}
-          />
-        </div>
-        <p className="rounded-xl border border-[#bfd6ca] bg-[#f4faf7] px-4 py-3 text-center text-[11px] leading-relaxed text-[#4a6358] dark:border-[#2b4a43] dark:bg-secondary/40 dark:text-[#d2e9df] sm:text-xs">
-          No necesitas capturar tu CLABE aquí: aún no existe una cuenta de
-          depósito vinculada. La registrarás cuando habilitemos transferencias
-          SPEI hacia tu banco.
-        </p>
-        <section className="rounded-[1.25rem] border border-border bg-card/50 p-4 sm:p-5">
-          <p className="text-center text-sm font-bold text-foreground">
-            Documentos KYC
-          </p>
-          <p className="mx-auto mt-2 max-w-md text-center text-[11px] leading-relaxed text-muted-foreground sm:text-xs">
-            JPG o PNG, bien iluminadas. Máximo{" "}
-            {formatFileSizeForUser(MAX_KYC_IMAGE_FILE_BYTES)} por archivo (así
-            el envío cabe en el servidor). Si una foto viene muy pesada de la
-            galería, comprímela o exporta en calidad media antes de elegirla.
-          </p>
-          <div className="mt-4 grid gap-4 sm:grid-cols-3 sm:gap-3">
-            <KycDocumentPicker
-              name="idFront"
-              label="Identificación · frente"
-              hint="INE o pasaporte, lado principal"
+        {/* ── Step 1: Datos personales ── */}
+        {step === 1 && (
+          <>
+            <Input
+              placeholder="Nombre(s)"
+              required
+              className="h-12 rounded-xl"
               disabled={!canSubmitForm}
-              selectedFileName={docFileNames.idFront}
-              onSelect={(f) =>
-                setDocFileNames((s) => ({ ...s, idFront: f?.name ?? null }))
-              }
+              autoComplete="given-name"
+              value={step1.givenName}
+              onChange={(e) => setStep1((s) => ({ ...s, givenName: e.target.value }))}
             />
-            <KycDocumentPicker
-              name="idBack"
-              label="Identificación · reverso"
-              hint="Lado con código y datos adicionales"
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Input
+                placeholder="Apellido paterno"
+                required
+                className="h-12 rounded-xl"
+                disabled={!canSubmitForm}
+                autoComplete="family-name"
+                value={step1.paternalLastName}
+                onChange={(e) => setStep1((s) => ({ ...s, paternalLastName: e.target.value }))}
+              />
+              <Input
+                placeholder="Apellido materno"
+                className="h-12 rounded-xl"
+                disabled={!canSubmitForm}
+                value={step1.maternalLastName}
+                onChange={(e) => setStep1((s) => ({ ...s, maternalLastName: e.target.value }))}
+              />
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Input
+                type="email"
+                placeholder="Correo electrónico"
+                required
+                className="h-12 rounded-xl"
+                disabled={!canSubmitForm}
+                value={step1.email}
+                onChange={(e) => setStep1((s) => ({ ...s, email: e.target.value }))}
+              />
+              <Input
+                placeholder="Teléfono (+521234567890)"
+                required
+                minLength={7}
+                className="h-12 rounded-xl"
+                disabled={!canSubmitForm}
+                value={step1.phoneNumber}
+                onChange={(e) => setStep1((s) => ({ ...s, phoneNumber: e.target.value }))}
+              />
+            </div>
+            <Input
+              placeholder="Ocupación"
+              required
+              className="h-12 rounded-xl"
               disabled={!canSubmitForm}
-              selectedFileName={docFileNames.idBack}
-              onSelect={(f) =>
-                setDocFileNames((s) => ({ ...s, idBack: f?.name ?? null }))
-              }
+              value={step1.occupation}
+              onChange={(e) => setStep1((s) => ({ ...s, occupation: e.target.value }))}
             />
-            <KycDocumentPicker
-              name="selfie"
-              label="Selfie"
-              hint="Tu rostro, bien iluminado"
+            <Input
+              type="date"
+              required
+              className="h-12 rounded-xl"
+              aria-label="Fecha de nacimiento"
               disabled={!canSubmitForm}
-              selectedFileName={docFileNames.selfie}
-              onSelect={(f) =>
-                setDocFileNames((s) => ({ ...s, selfie: f?.name ?? null }))
-              }
+              value={step1.dateOfBirth}
+              onChange={(e) => setStep1((s) => ({ ...s, dateOfBirth: e.target.value }))}
             />
-          </div>
-        </section>
-
-        {error && (
-          <section className="rounded-[1.25rem] border border-destructive/30 bg-destructive/10 px-4 py-4">
-            <p className="text-sm font-semibold text-destructive">
-              No pudimos enviar tu verificación
-            </p>
-            <p className="mt-1 text-sm text-destructive">{error}</p>
-          </section>
-        )}
-        {docUploadError && (
-          <section className="rounded-[1.25rem] border border-destructive/30 bg-destructive/10 px-4 py-4">
-            <p className="text-sm font-semibold text-destructive">
-              No pudimos subir tus documentos
-            </p>
-            <p className="mt-1 text-sm text-destructive">{docUploadError}</p>
-          </section>
-        )}
-        {success && (
-          <p className="rounded-[1.25rem] border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-700 dark:text-emerald-300">
-            {success}
-          </p>
+            <Input
+              placeholder="Calle y número"
+              required
+              className="h-12 rounded-xl"
+              disabled={!canSubmitForm}
+              value={step1.street}
+              onChange={(e) => setStep1((s) => ({ ...s, street: e.target.value }))}
+            />
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Input
+                placeholder="Ciudad"
+                required
+                className="h-12 rounded-xl"
+                disabled={!canSubmitForm}
+                value={step1.city}
+                onChange={(e) => setStep1((s) => ({ ...s, city: e.target.value }))}
+              />
+              <Input
+                placeholder="Estado"
+                required
+                className="h-12 rounded-xl"
+                disabled={!canSubmitForm}
+                value={step1.region}
+                onChange={(e) => setStep1((s) => ({ ...s, region: e.target.value }))}
+              />
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Input
+                placeholder="Código postal"
+                required
+                className="h-12 rounded-xl"
+                disabled={!canSubmitForm}
+                value={step1.postalCode}
+                onChange={(e) => setStep1((s) => ({ ...s, postalCode: e.target.value }))}
+              />
+              <Input
+                placeholder="País ISO-2 (MX)"
+                maxLength={2}
+                className="h-12 rounded-xl uppercase"
+                disabled={!canSubmitForm}
+                value={step1.country}
+                onChange={(e) => setStep1((s) => ({ ...s, country: e.target.value.toUpperCase() }))}
+              />
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Input
+                placeholder="CURP"
+                required
+                className="h-12 rounded-xl font-mono uppercase"
+                disabled={!canSubmitForm}
+                value={step1.curp}
+                onChange={(e) => setStep1((s) => ({ ...s, curp: e.target.value.toUpperCase() }))}
+              />
+              <Input
+                placeholder="RFC"
+                required
+                className="h-12 rounded-xl font-mono uppercase"
+                disabled={!canSubmitForm}
+                value={step1.rfc}
+                onChange={(e) => setStep1((s) => ({ ...s, rfc: e.target.value.toUpperCase() }))}
+              />
+            </div>
+            {step1Error && (
+              <p className="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+                {step1Error}
+              </p>
+            )}
+            <Button
+              type="button"
+              disabled={!canSubmitForm}
+              onClick={handleNext}
+              className="h-14 w-full rounded-full bg-foreground text-base font-bold text-background transition-all hover:bg-foreground/90 disabled:opacity-40"
+            >
+              Siguiente
+            </Button>
+          </>
         )}
 
-        <Button
-          type="submit"
-          disabled={pending || !wallet?.publicKey || !canSubmitForm}
-          className="h-14 w-full rounded-full bg-foreground text-base font-bold text-background transition-all hover:bg-foreground/90 disabled:opacity-40"
-        >
-          {pending
-            ? "Enviando…"
-            : inReview
-              ? "En revisión"
-              : "Enviar verificación"}
-        </Button>
+        {/* ── Step 2: Datos del negocio ── */}
+        {step === 2 && (
+          <>
+            <Input
+              placeholder="Nombre del negocio o razón social"
+              required
+              className="h-12 rounded-xl"
+              disabled={!canSubmitForm}
+              value={step2.businessName}
+              onChange={(e) => setStep2((s) => ({ ...s, businessName: e.target.value }))}
+            />
+            <select
+              required
+              disabled={!canSubmitForm}
+              value={step2.businessCategory}
+              onChange={(e) => setStep2((s) => ({ ...s, businessCategory: e.target.value }))}
+              className="h-12 w-full rounded-xl border border-input bg-background px-3 text-sm text-foreground disabled:opacity-50"
+            >
+              <option value="" disabled>Categoría del negocio</option>
+              <option value="comercio">Comercio al por menor</option>
+              <option value="servicios">Servicios profesionales</option>
+              <option value="tecnologia">Tecnología</option>
+              <option value="restaurante">Alimentos y bebidas</option>
+              <option value="salud">Salud y bienestar</option>
+              <option value="educacion">Educación</option>
+              <option value="otro">Otro</option>
+            </select>
+            <Input
+              placeholder="Dirección del negocio"
+              required
+              className="h-12 rounded-xl"
+              disabled={!canSubmitForm}
+              value={step2.businessAddress}
+              onChange={(e) => setStep2((s) => ({ ...s, businessAddress: e.target.value }))}
+            />
+            {step2Error && (
+              <p className="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+                {step2Error}
+              </p>
+            )}
+            <div className="flex gap-3">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setStep(1)}
+                className="h-14 flex-1 rounded-full font-bold"
+              >
+                Atrás
+              </Button>
+              <Button
+                type="button"
+                onClick={handleNext}
+                className="h-14 flex-1 rounded-full bg-foreground text-base font-bold text-background transition-all hover:bg-foreground/90"
+              >
+                Siguiente
+              </Button>
+            </div>
+          </>
+        )}
+
+        {/* ── Step 3: Documentos ── */}
+        {step === 3 && (
+          <>
+            <p className="rounded-xl border border-[#bfd6ca] bg-[#f4faf7] px-4 py-3 text-center text-[11px] leading-relaxed text-[#4a6358] dark:border-[#2b4a43] dark:bg-secondary/40 dark:text-[#d2e9df] sm:text-xs">
+              No necesitas capturar tu CLABE aquí: la registrarás cuando
+              habilitemos transferencias SPEI hacia tu banco.
+            </p>
+            <section className="rounded-[1.25rem] border border-border bg-card/50 p-4 sm:p-5">
+              <p className="text-center text-sm font-bold text-foreground">
+                Documentos KYC
+              </p>
+              <p className="mx-auto mt-2 max-w-md text-center text-[11px] leading-relaxed text-muted-foreground sm:text-xs">
+                JPG o PNG, bien iluminadas. Máximo{" "}
+                {formatFileSizeForUser(MAX_KYC_IMAGE_FILE_BYTES)} por archivo.
+              </p>
+              <div className="mt-4 grid gap-4 sm:grid-cols-3 sm:gap-3">
+                <KycDocumentPicker
+                  name="idFront"
+                  label="Identificación · frente"
+                  hint="INE o pasaporte, lado principal"
+                  disabled={!canSubmitForm}
+                  selectedFileName={docFileNames.idFront}
+                  onSelect={(f) => {
+                    setIdFrontFile(f);
+                    setDocFileNames((s) => ({ ...s, idFront: f?.name ?? null }));
+                  }}
+                />
+                <KycDocumentPicker
+                  name="idBack"
+                  label="Identificación · reverso"
+                  hint="Lado con código y datos adicionales"
+                  disabled={!canSubmitForm}
+                  selectedFileName={docFileNames.idBack}
+                  onSelect={(f) => {
+                    setIdBackFile(f);
+                    setDocFileNames((s) => ({ ...s, idBack: f?.name ?? null }));
+                  }}
+                />
+                <KycDocumentPicker
+                  name="selfie"
+                  label="Selfie"
+                  hint="Tu rostro, bien iluminado"
+                  disabled={!canSubmitForm}
+                  selectedFileName={docFileNames.selfie}
+                  onSelect={(f) => {
+                    setSelfieFile(f);
+                    setDocFileNames((s) => ({ ...s, selfie: f?.name ?? null }));
+                  }}
+                />
+              </div>
+            </section>
+
+            {error && (
+              <section className="rounded-[1.25rem] border border-destructive/30 bg-destructive/10 px-4 py-4">
+                <p className="text-sm font-semibold text-destructive">
+                  No pudimos enviar tu verificación
+                </p>
+                <p className="mt-1 text-sm text-destructive">{error}</p>
+              </section>
+            )}
+            {docUploadError && (
+              <section className="rounded-[1.25rem] border border-destructive/30 bg-destructive/10 px-4 py-4">
+                <p className="text-sm font-semibold text-destructive">
+                  No pudimos subir tus documentos
+                </p>
+                <p className="mt-1 text-sm text-destructive">{docUploadError}</p>
+              </section>
+            )}
+            {success && (
+              <p className="rounded-[1.25rem] border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-700 dark:text-emerald-300">
+                {success}
+              </p>
+            )}
+
+            <div className="flex gap-3">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setStep(2)}
+                className="h-14 flex-1 rounded-full font-bold"
+              >
+                Atrás
+              </Button>
+              <Button
+                type="submit"
+                disabled={pending || !wallet?.publicKey || !canSubmitForm}
+                className="h-14 flex-1 rounded-full bg-foreground text-base font-bold text-background transition-all hover:bg-foreground/90 disabled:opacity-40"
+              >
+                {pending
+                  ? "Enviando…"
+                  : inReview
+                    ? "En revisión"
+                    : "Enviar verificación"}
+              </Button>
+            </div>
+          </>
+        )}
       </form>
 
       <p className="mt-6 text-center text-sm text-muted-foreground">

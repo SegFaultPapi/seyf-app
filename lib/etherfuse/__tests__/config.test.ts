@@ -96,14 +96,15 @@ describe("getEtherfuseConfig() — unit tests", () => {
     expect(config.allowRamp).toBe(false);
   });
 
-  it("throws when ETHERFUSE_WEBHOOK_SECRET is missing in production (Req 1.4)", () => {
+  it("does not throw when ETHERFUSE_WEBHOOK_SECRET is missing in production (enforced at route level)", () => {
     process.env.ETHERFUSE_API_KEY = "test-api-key";
     (process.env as any).NODE_ENV = "production";
     process.env.VERCEL_ENV = "production";
     process.env.SEYF_ALLOW_ETHERFUSE_RAMP = "true";
     delete process.env.ETHERFUSE_WEBHOOK_SECRET;
 
-    expect(() => getEtherfuseConfig()).toThrow("ETHERFUSE_WEBHOOK_SECRET");
+    const config = getEtherfuseConfig();
+    expect(config.webhookSecret).toBeNull();
   });
 
   it("no exige ETHERFUSE_WEBHOOK_SECRET en Vercel preview aunque NODE_ENV sea production", () => {
@@ -251,7 +252,6 @@ describe("getEtherfuseConfig() — property tests", () => {
         ETHERFUSE_API_BASE_URL: "http://not-https.com", // invalid: not https
         NODE_ENV: "production",
         SEYF_ALLOW_ETHERFUSE_RAMP: "false", // invalid in production
-        ETHERFUSE_WEBHOOK_SECRET: undefined, // invalid in production
       },
       () => {
         let threw = false;
@@ -266,7 +266,7 @@ describe("getEtherfuseConfig() — property tests", () => {
         // All failing variable names must appear in the single error message
         expect(errorMsg).toContain("ETHERFUSE_API_KEY");
         expect(errorMsg).toContain("ETHERFUSE_API_BASE_URL");
-        expect(errorMsg).toContain("ETHERFUSE_WEBHOOK_SECRET");
+        expect(errorMsg).not.toContain("ETHERFUSE_WEBHOOK_SECRET");
         expect(errorMsg).toContain("SEYF_ALLOW_ETHERFUSE_RAMP");
       },
     );
