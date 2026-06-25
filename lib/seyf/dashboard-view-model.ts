@@ -14,7 +14,6 @@ import {
   DASHBOARD_MOVEMENTS_PREVIEW_LIMIT,
   type DashboardViewModel,
 } from "@/lib/seyf/dashboard-view-model-types";
-import { getActiveCycle } from "@/lib/seyf/cycle-store";
 
 export type { DashboardViewModel } from "@/lib/seyf/dashboard-view-model-types";
 export { DASHBOARD_MOVEMENTS_PREVIEW_LIMIT } from "@/lib/seyf/dashboard-view-model-types";

@@ -19,6 +19,8 @@ import {
 import { AppError, toErrorResponse } from '@/lib/seyf/api-error'
 import { rateLimitResponse } from '@/lib/seyf/redis-guards'
 import { normalizeDateOfBirthToIso } from '@/lib/seyf/normalize-date-of-birth'
+import { validateCurpChecksum } from '@/lib/seyf/curp-validator'
+import { isDatabaseConfigured, query } from '@/lib/seyf/db/client'
 import {
   isEtherfuseTestnetBankAutofillActive,
   getTestnetSyntheticClabe,
@@ -72,6 +74,13 @@ const bodySchema = z.object({
       .transform((arr) => arr.filter((x) => x.value.trim().length > 0))
       .pipe(z.array(z.object({ id: z.string().optional(), type: z.string(), value: z.string() })).min(1)),
   }),
+  businessData: z
+    .object({
+      businessName: z.string().trim().min(1),
+      businessCategory: z.string().trim().min(1),
+      businessAddress: z.string().trim().min(1),
+    })
+    .optional(),
 })
 
 function mapKycProviderSetupError(message: string): AppError | null {
@@ -126,6 +135,21 @@ export async function POST(req: Request) {
         retryable: false,
         message: 'Invalid Stellar public key.',
       })
+    }
+
+    // CURP checksum validation (RENAPO algorithm)
+    const curpEntry = parsed.data.identity.idNumbers.find((n) => n.type === 'mx_curp')
+    if (curpEntry) {
+      const curpNorm = curpEntry.value.trim().toUpperCase()
+      if (!validateCurpChecksum(curpNorm)) {
+        throw new AppError('validation_error', {
+          statusCode: 400,
+          retryable: false,
+          messageEs:
+            'El CURP ingresado no es válido. Verifica que los 18 caracteres sean correctos.',
+          message: `Invalid CURP checksum: ${curpNorm}`,
+        })
+      }
     }
 
     // Redis-first: pasa publicKey para buscar sesión guardada por wallet
