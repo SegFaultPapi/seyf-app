@@ -92,7 +92,6 @@ export async function buildDashboardViewModel(options?: {
     }),
   ]);
 
-  const activeCycle = ledgerUserKey ? getActiveCycle(ledgerUserKey) : null;
   const ledgerPrincipal = ledgerPrincipalMxn(investRuns);
   const cyclePrincipal = activeCycle?.principalMxn ?? 0;
   let principalMxn: number;
