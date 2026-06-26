@@ -2,6 +2,7 @@ import { query, getPool } from "@/lib/seyf/db/client";
 import type { TransactionStatus } from "@/lib/seyf/transactions/types";
 import { assertValidTransactionTransition } from "@/lib/seyf/transactions/state-machine";
 import { logger } from "@/lib/observability/logger";
+import { randomUUID } from "node:crypto";
 
 export type WithdrawalRow = {
   id: string;
@@ -241,6 +242,83 @@ export async function retryStuckWithdrawal(withdrawalId: string, actor: string):
     logger.error(
       { withdrawalId, actor, error: e instanceof Error ? e.message : String(e) },
       "retryStuckWithdrawal failed",
+    );
+    return { ok: false, withdrawal: null };
+  } finally {
+    client.release();
+  }
+}
+
+export async function initiateWithdrawal(params: {
+  userId: string;
+  amountMxn: number;
+  clabe: string;
+  alias?: string;
+  actor: string;
+}): Promise<{ ok: boolean; withdrawal: WithdrawalRow | null }> {
+  // Validate CLABE
+  const clabeDigits = params.clabe.replace(/\D/g, "");
+  if (clabeDigits.length !== 18) {
+    throw new Error("Invalid CLABE: must be 18 digits");
+  }
+
+  const client = await getPool().connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("select set_config('seyf.actor', $1, true)", [params.actor]);
+
+    // Check user balance
+    const balanceResult = await client.query<{ available_balance_mxn: string }>(
+      `select available_balance_mxn::text as available_balance_mxn
+       from user_balances
+       where user_id = $1
+       for update`,
+      [params.userId],
+    );
+
+    const balanceRow = balanceResult.rows[0];
+    if (!balanceRow) {
+      // User balance row does not exist, so they have 0 balance
+      await client.query("ROLLBACK");
+      return { ok: false, withdrawal: null };
+    }
+
+    const availableBalance = Number(balanceRow.available_balance_mxn);
+    if (availableBalance < params.amountMxn) {
+      await client.query("ROLLBACK");
+      return { ok: false, withdrawal: null };
+    }
+
+    // Deduct balance
+    await client.query(
+      `update user_balances
+       set available_balance_mxn = available_balance_mxn - $2, updated_at = now()
+       where user_id = $1`,
+      [params.userId, params.amountMxn],
+    );
+
+    // Create withdrawal record
+    const withdrawalId = randomUUID();
+    const metadata = {
+      clabe: clabeDigits,
+      alias: params.alias || null,
+      initiated_at: new Date().toISOString(),
+    };
+
+    const insertResult = await client.query<WithdrawalRow>(
+      `insert into withdrawals (id, user_id, status, amount_mxn, metadata, created_at, updated_at)
+       values ($1, $2, 'pending', $3, $4, now(), now())
+       returning id, user_id, type, status, amount_mxn::text as amount_mxn, metadata, created_at, updated_at`,
+      [withdrawalId, params.userId, params.amountMxn, JSON.stringify(metadata)],
+    );
+
+    await client.query("COMMIT");
+    return { ok: true, withdrawal: insertResult.rows[0] ?? null };
+  } catch (e) {
+    await client.query("ROLLBACK");
+    logger.error(
+      { userId: params.userId, amountMxn: params.amountMxn, error: e instanceof Error ? e.message : String(e) },
+      "initiateWithdrawal failed",
     );
     return { ok: false, withdrawal: null };
   } finally {
