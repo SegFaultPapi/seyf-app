@@ -4,6 +4,7 @@ import {
   MOCK_ANNUAL_RATE_PERCENT,
   getLedgerMeta,
 } from "@/lib/seyf/investment-mvp";
+import { getActiveCycle } from "@/lib/seyf/cycle-store";
 import {
   fetchDashboardCetesSaldo,
   type DashboardCetesSaldo,
@@ -71,9 +72,11 @@ const DASHBOARD_ETHERFUSE_ORDER_PAGES = 2;
  * Ensambla números en vivo: saldo CETES×MXN (Etherfuse) y, en dev o con SEYF_ALLOW_MOCK_INVEST, ledger MVP.
  */
 export async function buildDashboardViewModel(options?: {
+  userId?: string | null;
   /** Misma clave Stellar que Pollar; ayuda a resolver órdenes Etherfuse sin cookie en este dispositivo. */
   walletPublicKeyHint?: string | null;
 }): Promise<DashboardViewModel> {
+  const activeCycle = options?.userId ? getActiveCycle(options.userId) : null;
   const ctx = await resolveEtherfuseRampContext({
     walletPublicKeyHint: options?.walletPublicKeyHint ?? null,
   });
