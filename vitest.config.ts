@@ -14,6 +14,8 @@ export default defineConfig({
       "lib/seyf/__tests__/**/*.test.ts",
       "lib/seyf/auth/__tests__/**/*.test.ts",
       "lib/seyf/transactions/__tests__/**/*.test.ts",
+      "lib/services/**/*.test.ts",
+      "__tests__/**/*.test.ts",
     ],
     exclude: ["node_modules/**"],
   },
