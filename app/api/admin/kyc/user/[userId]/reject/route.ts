@@ -43,7 +43,7 @@ export async function PATCH(
     const message = error instanceof Error ? error.message : "Error al rechazar KYC";
     const status = error instanceof AppError ? error.statusCode : 500;
     
-    logger.error({ route: "admin/kyc/reject", userId: params.userId, error: message }, message);
+    logger.error({ route: "admin/kyc/user/reject", userId: params.userId, error: message }, message);
     
     return NextResponse.json(
       { ok: false, error: message },

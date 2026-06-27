@@ -12,8 +12,10 @@ export async function GET(request: Request) {
   try {
     const wallet =
       new URL(request.url).searchParams.get("wallet")?.trim() ?? "";
+    const userId = request.headers.get("x-user-id");
     // For backward compatibility with frontend, we still need the full view model
     const vm = await buildDashboardViewModel({
+      userId,
       walletPublicKeyHint: wallet.length > 0 ? wallet : null,
     });
 

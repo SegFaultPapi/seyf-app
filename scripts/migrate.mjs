@@ -37,7 +37,32 @@ async function getAppliedVersions(client) {
   return new Set(result.rows.map((row) => row.version));
 }
 
+async function loadEnvFiles() {
+  const envFiles = [".env", ".env.local"];
+  for (const file of envFiles) {
+    try {
+      const content = await readFile(path.join(process.cwd(), file), "utf8");
+      for (const line of content.split("\n")) {
+        const trimmed = line.trim();
+        if (trimmed && !trimmed.startsWith("#")) {
+          const firstEqual = trimmed.indexOf("=");
+          if (firstEqual > 0) {
+            const key = trimmed.slice(0, firstEqual).trim();
+            const val = trimmed.slice(firstEqual + 1).trim();
+            if (key && val && !process.env[key]) {
+              process.env[key] = val.replace(/^["']|["']$/g, "");
+            }
+          }
+        }
+      }
+    } catch {
+      // ignore missing file
+    }
+  }
+}
+
 async function main() {
+  await loadEnvFiles();
   const databaseUrl = process.env.DATABASE_URL?.trim();
   if (!databaseUrl) {
     console.error("DATABASE_URL is required");
