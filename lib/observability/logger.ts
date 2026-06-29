@@ -2,7 +2,7 @@ import pino from "pino";
 
 const isDev = process.env.NODE_ENV === "development";
 
-const transport = isDev
+const transport = (isDev && typeof pino.transport === "function")
   ? pino.transport({
       target: "pino-pretty",
       options: {

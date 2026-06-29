@@ -14,6 +14,7 @@ import {
   DASHBOARD_MOVEMENTS_PREVIEW_LIMIT,
   type DashboardViewModel,
 } from "@/lib/seyf/dashboard-view-model-types";
+import { getActiveCycle } from "@/lib/seyf/cycle-store";
 
 export type { DashboardViewModel } from "@/lib/seyf/dashboard-view-model-types";
 export { DASHBOARD_MOVEMENTS_PREVIEW_LIMIT } from "@/lib/seyf/dashboard-view-model-types";
@@ -93,6 +94,7 @@ export async function buildDashboardViewModel(options?: {
   ]);
 
   const ledgerPrincipal = ledgerPrincipalMxn(investRuns);
+  const activeCycle = ledgerUserKey ? getActiveCycle(ledgerUserKey) : null;
   const cyclePrincipal = activeCycle?.principalMxn ?? 0;
   let principalMxn: number;
   if (cetesSaldo.kind === "ok") principalMxn = cetesSaldo.principalMxn;
