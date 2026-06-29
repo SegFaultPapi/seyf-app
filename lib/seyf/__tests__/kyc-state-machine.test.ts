@@ -10,6 +10,8 @@ import * as db from "../db/client";
 import { createNotificationService } from "../notifications/notify";
 const mockNotifyUser = vi.fn().mockResolvedValue({ ok: true });
 
+const mockNotifyUser = vi.fn().mockResolvedValue({ ok: true });
+
 vi.mock("../db/client", () => ({
   query: vi.fn(),
   withActor: vi.fn((actor: string, fn: () => Promise<any>) => fn()),
