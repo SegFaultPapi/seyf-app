@@ -17,6 +17,9 @@ import {
   webhookSecretMissing,
   webhookRateLimit,
 } from "@/lib/webhooks/webhook-guard";
+import { getWithdrawalById, processProcessingWithdrawal } from "@/lib/seyf/withdrawal-service";
+import { enqueueSpeiWithdrawEvent } from "@/lib/seyf/spei-withdraw-processor";
+import { query } from "@/lib/seyf/db/client";
 
 export const runtime = "nodejs";
 
@@ -49,6 +52,9 @@ function summarizePayloadForLogs(payload: unknown) {
     status: pickString(data, ["status"]),
   };
 }
+
+// Keep signature verification for backward compatibility but use WithSecrets
+import { verifyEtherfuseWebhookSignature } from "@/lib/etherfuse/webhook-verify";
 
 function isKycStatus(value: string): value is EtherfuseKycStatus {
   return (
@@ -127,6 +133,8 @@ function etherfuseWebhookSecrets(primarySecret: string): string[] {
  * @see https://docs.etherfuse.com/guides/verifying-webhooks
  */
 async function handlePost(req: Request, _context: { params: Promise<Record<string, string | string[]>> }) {
+  const logCtx = { route: "webhooks/etherfuse", provider: "etherfuse" };
+
   const raw = await req.text();
   let payload: unknown;
   try {
@@ -139,8 +147,9 @@ async function handlePost(req: Request, _context: { params: Promise<Record<strin
   const sig = req.headers.get("x-signature");
 
   if (secret) {
-    if (!verifyEtherfuseWebhookSignature(payload, sig, secret)) {
-      return NextResponse.json({ error: "Firma inválida" }, { status: 401 });
+    const verification = verifyEtherfuseWebhookWithSecrets(payload, sig, etherfuseWebhookSecrets(secret));
+    if (!verification.valid) {
+      return NextResponse.json({ error: `Firma inválida: ${verification.reason}` }, { status: 401 });
     }
   } else if (strictEtherfuseProductionConfig()) {
     return webhookSecretMissing(logCtx);
@@ -205,22 +214,74 @@ async function handlePost(req: Request, _context: { params: Promise<Record<strin
 
   try {
     const details = pickRampOrderTransactionDetails(payload);
-    const isOnramp = (details.orderType ?? "").toLowerCase() === "onramp";
-    const isConfirmed = (details.status ?? "").toLowerCase() === "confirmed";
+    const orderType = (details.orderType ?? "").toLowerCase();
+    const orderStatus = (details.status ?? "").toLowerCase();
 
-    if (isOnramp && isConfirmed && details.orderId) {
-      void enqueueAutoDeployForDeposit({
-        depositId: details.orderId,
-        amountMxn:
-          details.amountInFiat && Number.isFinite(Number(details.amountInFiat))
-            ? Number(details.amountInFiat)
-            : null,
-      }).catch((error) => {
-        logger.error(
-          { route: "webhooks/etherfuse/deploy", error: error instanceof Error ? error.message : String(error) },
-          "enqueueAutoDeployForDeposit failed",
+    if (orderType === "onramp") {
+      const isConfirmed = orderStatus === "confirmed" || orderStatus === "completed" || orderStatus === "success";
+      if (isConfirmed && details.orderId) {
+        void enqueueAutoDeployForDeposit({
+          depositId: details.orderId,
+          amountMxn:
+            details.amountInFiat && Number.isFinite(Number(details.amountInFiat))
+              ? Number(details.amountInFiat)
+              : null,
+        }).catch((error) => {
+          logger.error(
+            { route: "webhooks/etherfuse/deploy", error: error instanceof Error ? error.message : String(error) },
+            "enqueueAutoDeployForDeposit failed",
+          );
+        });
+      }
+    } else if (orderType === "offramp" && details.orderId) {
+      const withdrawalId = details.orderId;
+      const withdrawal = await getWithdrawalById(withdrawalId);
+
+      if (withdrawal) {
+        if (orderStatus === "processing" || orderStatus === "funded") {
+          await processProcessingWithdrawal(withdrawalId, "webhook:etherfuse");
+
+          const metadataUpdate = {
+            etherfuse_order_id: details.orderId,
+            etherfuse_status: details.status,
+            etherfuse_tx_signature: details.confirmedTxSignature,
+            updated_at: new Date().toISOString(),
+          };
+          await query(
+            `update withdrawals
+             set metadata = metadata || $2::jsonb
+             where id = $1`,
+            [withdrawalId, JSON.stringify(metadataUpdate)],
+          );
+        } else if (orderStatus === "completed" || orderStatus === "success" || orderStatus === "confirmed") {
+          void enqueueSpeiWithdrawEvent({
+            eventId: eventId,
+            withdrawalId: withdrawalId,
+            userId: withdrawal.user_id,
+            status: "completed",
+            amountMxn: details.amountInFiat ? Number(details.amountInFiat) : Number(withdrawal.amount_mxn),
+            destinationLabel: details.bankAccountId ?? undefined,
+          }).catch((error) => {
+            logger.error({ route: "webhooks/etherfuse", error: String(error) }, "Failed to enqueue completed offramp event");
+          });
+        } else if (orderStatus === "failed" || orderStatus === "canceled" || orderStatus === "cancelled" || orderStatus === "rejected") {
+          void enqueueSpeiWithdrawEvent({
+            eventId: eventId,
+            withdrawalId: withdrawalId,
+            userId: withdrawal.user_id,
+            status: "failed",
+            amountMxn: details.amountInFiat ? Number(details.amountInFiat) : Number(withdrawal.amount_mxn),
+            reason: `Order failed in Etherfuse (status: ${details.status})`,
+          }).catch((error) => {
+            logger.error({ route: "webhooks/etherfuse", error: String(error) }, "Failed to enqueue failed offramp event");
+          });
+        }
+      } else {
+        logger.warn(
+          { route: "webhooks/etherfuse", withdrawalId },
+          "Offramp webhook received but no corresponding withdrawal found",
         );
-      });
+      }
     }
   } catch (error) {
     logger.error(
