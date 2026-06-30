@@ -11,11 +11,28 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    setTimeout(() => setLoading(false), 1500);
+    setError("");
+    try {
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.error || "Credenciales incorrectas o error en el servidor.");
+      }
+      // Force a full reload to the dashboard so that the middleware picks up the new cookies
+      window.location.href = "/dashboard";
+    } catch (err: any) {
+      setError(err.message || "Error de conexión.");
+      setLoading(false);
+    }
   };
 
   return (
@@ -37,6 +54,12 @@ export default function LoginPage() {
             Inicia sesión para ver tu ahorro y rendimientos.
           </p>
         </div>
+
+        {error && (
+          <div className="mb-4 rounded-lg bg-destructive/15 p-4 text-sm text-destructive font-medium">
+            {error}
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <Input
