@@ -49,7 +49,7 @@ const nextConfig = {
           {
             key: "Content-Security-Policy-Report-Only",
             value:
-              "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://images.unsplash.com; connect-src 'self' https://api.etherfuse.com https://api.sand.etherfuse.com https://api.pollar.xyz https://api.frankfurter.app https://horizon.stellar.org https://horizon-testnet.stellar.org https://vercel.com https://*.vercel-insights.com; font-src 'self' data:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'; worker-src 'self'; report-uri /api/seyf/_csp-report",
+              "default-src 'self'; script-src 'self' https://va.vercel-scripts.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://images.unsplash.com; connect-src 'self' https://api.etherfuse.com https://api.sand.etherfuse.com https://api.pollar.xyz https://sdk.api.pollar.xyz https://api.frankfurter.app https://horizon.stellar.org https://horizon-testnet.stellar.org https://vercel.com https://*.vercel-insights.com; font-src 'self' data:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'; worker-src 'self'; report-uri /api/seyf/_csp-report",
           },
         ],
       },
