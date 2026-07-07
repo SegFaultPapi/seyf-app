@@ -8,6 +8,7 @@ import {
 } from "../kyc-state-machine";
 import * as db from "../db/client";
 import { createNotificationService } from "../notifications/notify";
+const mockNotifyUser = vi.fn().mockResolvedValue({ ok: true });
 
 const mockNotifyUser = vi.fn().mockResolvedValue({ ok: true });
 

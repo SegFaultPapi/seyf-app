@@ -6,12 +6,15 @@ import { useTranslations } from 'next-intl'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
+import { getFcmToken, requestNotificationPermission } from '@/lib/seyf/notifications/fcm-web'
 
 type SettingsResponse = {
   userId: string
   settings: {
     phoneNumber: string | null
     smsEnabled: boolean
+    pushEnabled: boolean
+    fcmToken: string | null
     updatedAt: string
   }
 }
@@ -22,6 +25,8 @@ export function NotificationSettingsCard() {
   const [loading, setLoading] = useState(true)
   const [phoneNumber, setPhoneNumber] = useState('')
   const [smsEnabled, setSmsEnabled] = useState(true)
+  const [pushEnabled, setPushEnabled] = useState(true)
+  const [fcmToken, setFcmToken] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
 
@@ -36,6 +41,8 @@ export function NotificationSettingsCard() {
         if (cancelled) return
         setPhoneNumber(data.settings.phoneNumber ?? '')
         setSmsEnabled(data.settings.smsEnabled)
+        setPushEnabled(data.settings.pushEnabled)
+        setFcmToken(data.settings.fcmToken)
       })
       .catch((err: unknown) => {
         if (cancelled) return
@@ -50,6 +57,31 @@ export function NotificationSettingsCard() {
     }
   }, [t])
 
+  async function handlePushToggle(checked: boolean) {
+    setError(null)
+    setMessage(null)
+    if (checked) {
+      const permission = await requestNotificationPermission()
+      if (permission === 'denied') {
+        setError(t('errors.notificationsBlocked'))
+        setPushEnabled(false)
+        return
+      }
+      setLoading(true)
+      const token = await getFcmToken()
+      setLoading(false)
+      if (token) {
+        setFcmToken(token)
+        setPushEnabled(true)
+      } else {
+        setError(t('errors.tokenFailed'))
+        setPushEnabled(false)
+      }
+    } else {
+      setPushEnabled(false)
+    }
+  }
+
   function handleSave() {
     setError(null)
     setMessage(null)
@@ -63,6 +95,8 @@ export function NotificationSettingsCard() {
           body: JSON.stringify({
             phoneNumber,
             smsEnabled,
+            pushEnabled,
+            fcmToken: pushEnabled ? fcmToken : null,
           }),
         })
         const data = (await response.json()) as
@@ -80,6 +114,8 @@ export function NotificationSettingsCard() {
         if ('settings' in data) {
           setPhoneNumber(data.settings.phoneNumber ?? '')
           setSmsEnabled(data.settings.smsEnabled)
+          setPushEnabled(data.settings.pushEnabled)
+          setFcmToken(data.settings.fcmToken)
         }
         setMessage(t('saved'))
       } catch (err) {
@@ -127,6 +163,21 @@ export function NotificationSettingsCard() {
             onCheckedChange={setSmsEnabled}
             disabled={loading || pending}
             aria-label={t('ariaToggle')}
+          />
+        </div>
+
+        <div className="flex items-center justify-between rounded-lg border border-border bg-background px-4 py-3.5">
+          <div className="pr-1">
+            <p className="text-sm font-semibold text-foreground">{t('pushActive')}</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {t('pushBody')}
+            </p>
+          </div>
+          <Switch
+            checked={pushEnabled}
+            onCheckedChange={handlePushToggle}
+            disabled={loading || pending}
+            aria-label={t('ariaPushToggle')}
           />
         </div>
 

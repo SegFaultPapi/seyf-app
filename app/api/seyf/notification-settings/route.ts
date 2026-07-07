@@ -21,6 +21,8 @@ function cookieOptions() {
 const bodySchema = z.object({
   phoneNumber: z.string().trim().max(32).nullable().optional(),
   smsEnabled: z.boolean().optional(),
+  pushEnabled: z.boolean().optional(),
+  fcmToken: z.string().trim().nullable().optional(),
 })
 
 export async function GET() {
@@ -31,6 +33,8 @@ export async function GET() {
     settings: {
       phoneNumber: settings.phoneNumber,
       smsEnabled: !settings.smsOptOut,
+      pushEnabled: !settings.pushOptOut,
+      fcmToken: settings.fcmToken,
       updatedAt: settings.updatedAt,
     },
   })
@@ -62,6 +66,9 @@ export async function POST(req: Request) {
       phoneNumber: parsed.data.phoneNumber,
       smsOptOut:
         parsed.data.smsEnabled === undefined ? undefined : !parsed.data.smsEnabled,
+      pushOptOut:
+        parsed.data.pushEnabled === undefined ? undefined : !parsed.data.pushEnabled,
+      fcmToken: parsed.data.fcmToken,
     })
   } catch (error) {
     return NextResponse.json(
@@ -79,6 +86,8 @@ export async function POST(req: Request) {
     settings: {
       phoneNumber: next.phoneNumber,
       smsEnabled: !next.smsOptOut,
+      pushEnabled: !next.pushOptOut,
+      fcmToken: next.fcmToken,
       updatedAt: next.updatedAt,
     },
   })

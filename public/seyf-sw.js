@@ -83,3 +83,47 @@ self.addEventListener('fetch', (event) => {
     );
   }
 });
+
+// ─── Push Notifications ────────────────────────────────────────────────────────
+self.addEventListener('push', (event) => {
+  if (!event.data) return;
+
+  try {
+    let payload;
+    try {
+      payload = event.data.json();
+    } catch {
+      payload = { notification: { title: 'Seyf', body: event.data.text() } };
+    }
+
+    const title = payload.notification?.title || 'Seyf';
+    const options = {
+      body: payload.notification?.body || '',
+      icon: '/icon.svg',
+      badge: '/icon.svg',
+      data: payload.data || {},
+    };
+
+    event.waitUntil(self.registration.showNotification(title, options));
+  } catch (err) {
+    console.error('[seyf-sw] Error in push event listener:', err);
+  }
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      for (const client of clientList) {
+        const url = new URL(client.url);
+        if (url.pathname === '/dashboard' && 'focus' in client) {
+          return client.focus();
+        }
+      }
+      if (clients.openWindow) {
+        return clients.openWindow('/dashboard');
+      }
+    })
+  );
+});
