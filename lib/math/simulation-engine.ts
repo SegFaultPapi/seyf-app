@@ -96,19 +96,14 @@ export function runYieldSimulation(params: SimulationParams = {}): SimulationRes
       const Z2 = rho * Z1 + Math.sqrt(1 - rho * rho) * W;
       const Z3 = rng.nextNormal(); // Independent default rate shock
 
-      // Update stochastic rates
-      r = r + k_r * (theta_r - r) * dt + sigma_r * sqrtDt * Z1;
-      r = Math.max(0, r); // Interest rates cannot be negative
-
+      // Calculate nextS for the end of the period
       const nextS = S * Math.exp((mu_fx - 0.5 * sigma_fx * sigma_fx) * dt + sigma_fx * sqrtDt * Z2);
-      p = p + k_p * (theta_p - p) * dt + sigma_p * sqrtDt * Z3;
-      p = Math.max(0, p); // Default rate cannot be negative
 
       // Allocations
       const V = F * utilizationRate;
       const B = F * (1 - utilizationRate);
 
-      // Cashflows
+      // Cashflows (using rates r, p, S at the start of period t, and nextS at the end of period t)
       const incLoan = V * (r + loanSpread) * dt;
       // Sovereign bond is in MXN. We convert USD to MXN at S, earn yield r, and convert back at nextS
       const incBond = B * ((1 + r * dt) * (S / nextS) - 1);
@@ -118,7 +113,13 @@ export function runYieldSimulation(params: SimulationParams = {}): SimulationRes
       F += netProfitMonth;
       minCapital = Math.min(minCapital, F);
 
-      // Update exchange rate for the next step
+      // Update stochastic rates for the next period (t + 1)
+      r = r + k_r * (theta_r - r) * dt + sigma_r * sqrtDt * Z1;
+      r = Math.max(0, r); // Interest rates cannot be negative
+
+      p = p + k_p * (theta_p - p) * dt + sigma_p * sqrtDt * Z3;
+      p = Math.min(1, Math.max(0, p)); // Default rate must be in [0, 1]
+
       S = nextS;
     }
 
