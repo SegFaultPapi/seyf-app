@@ -464,14 +464,19 @@
       "phonePlaceholder": "5512345678 o +525512345678",
       "notificationsActive": "Notificaciones activas",
       "notificationsBody": "Si apagas esta opcion, seguiremos registrando el intento pero no enviaremos SMS.",
+      "pushActive": "Notificaciones Push",
+      "pushBody": "Recibe alertas instantáneas en tu navegador sobre tus depósitos, adelantos y retiros.",
       "ariaToggle": "Activar notificaciones SMS",
+      "ariaPushToggle": "Activar notificaciones Push",
       "savePending": "Guardando...",
       "save": "Guardar ajustes",
       "errors": {
         "loadFailed": "No se pudo cargar tu preferencia de notificaciones.",
         "loadFailedFallback": "No se pudo cargar la preferencia.",
         "saveFailed": "No se pudo guardar.",
-        "saveFailedFallback": "No se pudo guardar."
+        "saveFailedFallback": "No se pudo guardar.",
+        "notificationsBlocked": "Notificaciones bloqueadas por el navegador.",
+        "tokenFailed": "No se pudo obtener el token de notificaciones."
       },
       "saved": "Preferencia guardada."
     },

@@ -5,6 +5,8 @@ export type NotificationUserSettings = {
   userId: string
   phoneNumber: string | null
   smsOptOut: boolean
+  pushOptOut: boolean
+  fcmToken: string | null
   updatedAt: string
 }
 
@@ -55,30 +57,26 @@ export async function getUserNotificationSettings(
   userId: string,
 ): Promise<NotificationUserSettings> {
   const file = await loadSettings()
-  return (
-    file.users[userId] ?? {
-      userId,
-      phoneNumber: null,
-      smsOptOut: false,
-      updatedAt: new Date(0).toISOString(),
-    }
-  )
+  const s = file.users[userId]
+  return {
+    userId,
+    phoneNumber: s?.phoneNumber ?? null,
+    smsOptOut: s?.smsOptOut ?? false,
+    pushOptOut: s?.pushOptOut ?? false,
+    fcmToken: s?.fcmToken ?? null,
+    updatedAt: s?.updatedAt ?? new Date(0).toISOString(),
+  }
 }
 
 export async function upsertUserNotificationSettings(input: {
   userId: string
   phoneNumber?: string | null
   smsOptOut?: boolean
+  pushOptOut?: boolean
+  fcmToken?: string | null
 }): Promise<NotificationUserSettings> {
   const file = await loadSettings()
-  const existing =
-    file.users[input.userId] ??
-    ({
-      userId: input.userId,
-      phoneNumber: null,
-      smsOptOut: false,
-      updatedAt: new Date(0).toISOString(),
-    } satisfies NotificationUserSettings)
+  const existing = await getUserNotificationSettings(input.userId)
 
   const nextPhoneNumber = (() => {
     if (input.phoneNumber === undefined) return existing.phoneNumber
@@ -95,6 +93,8 @@ export async function upsertUserNotificationSettings(input: {
     userId: input.userId,
     phoneNumber: nextPhoneNumber,
     smsOptOut: input.smsOptOut ?? existing.smsOptOut,
+    pushOptOut: input.pushOptOut ?? existing.pushOptOut,
+    fcmToken: input.fcmToken !== undefined ? input.fcmToken : existing.fcmToken,
     updatedAt: new Date().toISOString(),
   }
 

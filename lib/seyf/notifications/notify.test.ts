@@ -117,3 +117,63 @@ test('notifyUser never throws when delivery fails twice', async () => {
   assert.equal(logs.entries[0]?.status, 'failed')
   assert.equal(logs.entries[1]?.status, 'failed')
 })
+
+test('notifyUser delivers via push and logs status successfully', async () => {
+  const logs = createAppendLogSpy()
+  let pushSent = false
+  const service = createNotificationService({
+    getUserSettings: async () => ({
+      userId: 'user-4',
+      phoneNumber: null,
+      smsOptOut: false,
+      pushOptOut: false,
+      fcmToken: 'token-abc-123',
+      updatedAt: '2026-04-23T00:00:00.000Z',
+    }),
+    appendLog: logs.appendLog,
+    sendPush: async () => {
+      pushSent = true
+      return { providerMessageId: 'FCM-msg-123' }
+    },
+  })
+
+  const result = await service.notifyUser('user-4', 'kyc_approved', {})
+
+  assert.equal(result.ok, true)
+  assert.equal(result.status, 'sent')
+  assert.equal(pushSent, true)
+  assert.equal(logs.entries.length, 1)
+  assert.equal(logs.entries[0]?.channel, 'push')
+  assert.equal(logs.entries[0]?.status, 'sent')
+})
+
+test('notifyUser skips push delivery when push opt-out is true', async () => {
+  const logs = createAppendLogSpy()
+  let pushSent = false
+  const service = createNotificationService({
+    getUserSettings: async () => ({
+      userId: 'user-5',
+      phoneNumber: null,
+      smsOptOut: false,
+      pushOptOut: true,
+      fcmToken: 'token-abc-123',
+      updatedAt: '2026-04-23T00:00:00.000Z',
+    }),
+    appendLog: logs.appendLog,
+    sendPush: async () => {
+      pushSent = true
+      return { providerMessageId: 'FCM-msg-123' }
+    },
+  })
+
+  const result = await service.notifyUser('user-5', 'kyc_approved', {})
+
+  assert.equal(result.ok, false)
+  assert.equal(result.status, 'skipped')
+  assert.equal(result.reason, 'opted_out')
+  assert.equal(pushSent, false)
+  assert.equal(logs.entries.length, 1)
+  assert.equal(logs.entries[0]?.channel, 'push')
+  assert.equal(logs.entries[0]?.status, 'skipped')
+  assert.equal(logs.entries[0]?.error, 'opted_out')
+})

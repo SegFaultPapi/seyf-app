@@ -1,3 +1,4 @@
+import crypto from 'node:crypto'
 import { appendNotificationLog } from './notification-log.ts'
 import { sendTwilioSms, type SmsSendInput, type SmsSendResult } from './twilio-sms.ts'
 import { getUserNotificationSettings } from './user-settings.ts'
@@ -13,10 +14,22 @@ type UserSettings = Awaited<ReturnType<typeof getUserNotificationSettings>>
 
 type AppendLogInput = Omit<NotificationLogEntry, 'id' | 'createdAt'>
 
+export type PushSendInput = {
+  token: string
+  title: string
+  body: string
+  data?: Record<string, string>
+}
+
+export type PushSendResult = {
+  providerMessageId: string | null
+}
+
 type NotificationServiceDeps = {
   getUserSettings?: (userId: string) => Promise<UserSettings>
   appendLog?: (entry: AppendLogInput) => Promise<NotificationLogEntry>
   sendSms?: (input: SmsSendInput) => Promise<SmsSendResult>
+  sendPush?: (input: PushSendInput) => Promise<PushSendResult>
   now?: () => Date
 }
 
@@ -39,6 +52,25 @@ function formatCurrencyMxn(amount: number | undefined): string | null {
     currency: 'MXN',
     maximumFractionDigits: 2,
   }).format(amount)
+}
+
+export function buildPushTitle(event: NotificationEvent): string {
+  switch (event) {
+    case 'deposit_deployed':
+      return '¡Depósito exitoso!'
+    case 'advance_confirmed':
+      return 'Adelanto confirmado'
+    case 'withdrawal_completed':
+      return 'Retiro completado'
+    case 'withdrawal_failed':
+      return 'Problema con tu retiro'
+    case 'kyc_approved':
+      return 'Identidad verificada'
+    case 'kyc_rejected':
+      return 'Verificación rechazada'
+    default:
+      return 'Seyf App'
+  }
 }
 
 export function buildSmsCopy<E extends NotificationEvent>(
@@ -85,46 +117,114 @@ export function buildSmsCopy<E extends NotificationEvent>(
   }
 }
 
+async function getGoogleAccessToken(serviceAccount: {
+  project_id: string
+  client_email: string
+  private_key: string
+}): Promise<string> {
+  const now = Math.floor(Date.now() / 1000)
+  const claim = {
+    iss: serviceAccount.client_email,
+    scope: 'https://www.googleapis.com/auth/firebase.messaging',
+    aud: 'https://oauth2.googleapis.com/token',
+    exp: now + 3600,
+    iat: now
+  }
+
+  const header = { alg: 'RS256', typ: 'JWT' }
+  const encodedHeader = Buffer.from(JSON.stringify(header)).toString('base64url')
+  const encodedPayload = Buffer.from(JSON.stringify(claim)).toString('base64url')
+  
+  const signInput = `${encodedHeader}.${encodedPayload}`
+  const signature = crypto.sign('sha256', Buffer.from(signInput), serviceAccount.private_key)
+  const encodedSignature = signature.toString('base64url')
+  const assertion = `${signInput}.${encodedSignature}`
+
+  const res = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+      assertion
+    })
+  })
+
+  if (!res.ok) {
+    throw new Error(`Google OAuth token exchange failed: ${res.status} ${await res.text()}`)
+  }
+
+  const data = await res.json()
+  return data.access_token
+}
+
+export async function sendFcmPush(input: PushSendInput): Promise<PushSendResult> {
+  let sa: any = null
+  if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
+    try {
+      sa = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON)
+    } catch {
+      // ignore
+    }
+  } else if (
+    process.env.FIREBASE_PROJECT_ID &&
+    process.env.FIREBASE_CLIENT_EMAIL &&
+    process.env.FIREBASE_PRIVATE_KEY
+  ) {
+    sa = {
+      project_id: process.env.FIREBASE_PROJECT_ID,
+      client_email: process.env.FIREBASE_CLIENT_EMAIL,
+      private_key: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n')
+    }
+  }
+
+  if (!sa || !sa.project_id || !sa.client_email || !sa.private_key) {
+    console.log(`[FCM Server Mock] Sending Push notification:
+      To: ${input.token}
+      Title: ${input.title}
+      Body: ${input.body}
+      Data: ${JSON.stringify(input.data || {})}`)
+    return { providerMessageId: 'mock-fcm-msg-' + Math.random().toString(36).substring(2, 10) }
+  }
+
+  const accessToken = await getGoogleAccessToken(sa)
+  const url = `https://fcm.googleapis.com/v1/projects/${sa.project_id}/messages:send`
+
+  const payload = {
+    message: {
+      token: input.token,
+      notification: {
+        title: input.title,
+        body: input.body
+      },
+      data: input.data || {}
+    }
+  }
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${accessToken}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(payload)
+  })
+
+  if (!res.ok) {
+    throw new Error(`FCM push send failed: ${res.status} ${await res.text()}`)
+  }
+
+  const resData = await res.json()
+  const parts = resData.name?.split('/')
+  const messageId = parts ? parts[parts.length - 1] : null
+  return { providerMessageId: messageId }
+}
+
 export function createNotificationService(deps: NotificationServiceDeps = {}) {
   const getUserSettings = deps.getUserSettings ?? getUserNotificationSettings
   const appendLog = deps.appendLog ?? appendNotificationLog
   const sendSms = deps.sendSms ?? sendTwilioSms
+  const sendPush = deps.sendPush ?? sendFcmPush
   const now = deps.now ?? (() => new Date())
-
-  async function logSkipped(
-    userId: string,
-    event: NotificationEvent,
-    payload: NotificationPayload,
-    body: string,
-    phoneNumber: string | null,
-    reason: NotificationSkipReason,
-  ) {
-    await appendLog({
-      userId,
-      channel: 'sms',
-      event,
-      status: 'skipped',
-      attempt: 0,
-      provider: 'twilio',
-      phoneNumber,
-      payloadJson: payload,
-      sentAt: null,
-      error: reason,
-      providerMessageId: null,
-    })
-
-    return {
-      ok: false,
-      status: 'skipped' as const,
-      event,
-      attempts: 0,
-      phoneNumber,
-      body,
-      reason,
-      lastError: null,
-      providerMessageId: null,
-    }
-  }
 
   async function notifyUser<E extends NotificationEvent>(
     userId: string,
@@ -133,75 +233,195 @@ export function createNotificationService(deps: NotificationServiceDeps = {}) {
   ): Promise<NotifyUserResult> {
     const payload = data as NotificationPayload
     const body = buildSmsCopy(event, data)
+    const title = buildPushTitle(event)
     const settings = await getUserSettings(userId)
 
-    if (settings.smsOptOut) {
-      return logSkipped(userId, event, payload, body, settings.phoneNumber, 'opted_out')
-    }
-
-    if (!settings.phoneNumber) {
-      return logSkipped(userId, event, payload, body, null, 'missing_phone')
-    }
-
-    let lastError: string | null = null
-
-    for (let attempt = 1; attempt <= 2; attempt += 1) {
-      try {
-        const sent = await sendSms({
-          to: settings.phoneNumber,
-          body,
-        })
-        await appendLog({
-          userId,
-          channel: 'sms',
-          event,
-          status: 'sent',
-          attempt,
-          provider: 'twilio',
-          phoneNumber: settings.phoneNumber,
-          payloadJson: payload,
-          sentAt: now().toISOString(),
-          error: null,
-          providerMessageId: sent.providerMessageId,
-        })
-        return {
-          ok: true,
-          status: 'sent',
-          event,
-          attempts: attempt,
-          phoneNumber: settings.phoneNumber,
-          body,
-          lastError: null,
-          providerMessageId: sent.providerMessageId,
+    const fcmData: Record<string, string> = {}
+    if (data) {
+      for (const [key, val] of Object.entries(data)) {
+        if (val !== undefined && val !== null) {
+          fcmData[key] = typeof val === 'object' ? JSON.stringify(val) : String(val)
         }
-      } catch (error) {
-        lastError = error instanceof Error ? error.message : 'SMS delivery failed'
+      }
+    }
+
+    if (!settings.phoneNumber && !settings.fcmToken) {
+      await appendLog({
+        userId,
+        channel: 'sms',
+        event,
+        status: 'skipped',
+        attempt: 0,
+        provider: 'twilio',
+        phoneNumber: null,
+        payloadJson: payload,
+        sentAt: null,
+        error: 'missing_phone',
+        providerMessageId: null,
+      })
+      return {
+        ok: false,
+        status: 'skipped',
+        event,
+        attempts: 0,
+        phoneNumber: null,
+        body,
+        reason: 'missing_phone',
+        lastError: null,
+        providerMessageId: null,
+      }
+    }
+
+    let smsSent = false
+    let pushSent = false
+    let attempts = 0
+    let lastError: string | null = null
+    let providerMessageId: string | null = null
+
+    // 1. Deliver via SMS
+    if (settings.phoneNumber) {
+      if (settings.smsOptOut) {
         await appendLog({
           userId,
           channel: 'sms',
           event,
-          status: 'failed',
-          attempt,
+          status: 'skipped',
+          attempt: 0,
           provider: 'twilio',
           phoneNumber: settings.phoneNumber,
           payloadJson: payload,
           sentAt: null,
-          error: lastError,
+          error: 'opted_out',
           providerMessageId: null,
         })
+      } else {
+        for (let attempt = 1; attempt <= 2; attempt += 1) {
+          attempts += 1
+          try {
+            const sent = await sendSms({
+              to: settings.phoneNumber,
+              body,
+            })
+            smsSent = true
+            providerMessageId = sent.providerMessageId
+            await appendLog({
+              userId,
+              channel: 'sms',
+              event,
+              status: 'sent',
+              attempt,
+              provider: 'twilio',
+              phoneNumber: settings.phoneNumber,
+              payloadJson: payload,
+              sentAt: now().toISOString(),
+              error: null,
+              providerMessageId: sent.providerMessageId,
+            })
+            break
+          } catch (error) {
+            lastError = error instanceof Error ? error.message : 'SMS delivery failed'
+            await appendLog({
+              userId,
+              channel: 'sms',
+              event,
+              status: 'failed',
+              attempt,
+              provider: 'twilio',
+              phoneNumber: settings.phoneNumber,
+              payloadJson: payload,
+              sentAt: null,
+              error: lastError,
+              providerMessageId: null,
+            })
+          }
+        }
       }
     }
 
+    // 2. Deliver via Push
+    if (settings.fcmToken) {
+      if (settings.pushOptOut) {
+        await appendLog({
+          userId,
+          channel: 'push',
+          event,
+          status: 'skipped',
+          attempt: 0,
+          provider: 'fcm',
+          phoneNumber: null,
+          payloadJson: payload,
+          sentAt: null,
+          error: 'opted_out',
+          providerMessageId: null,
+        })
+      } else {
+        attempts += 1
+        try {
+          const sent = await sendPush({
+            token: settings.fcmToken,
+            title,
+            body,
+            data: fcmData
+          })
+          pushSent = true
+          providerMessageId = sent.providerMessageId || providerMessageId
+          await appendLog({
+            userId,
+            channel: 'push',
+            event,
+            status: 'sent',
+            attempt: 1,
+            provider: 'fcm',
+            phoneNumber: null,
+            payloadJson: payload,
+            sentAt: now().toISOString(),
+            error: null,
+            providerMessageId: sent.providerMessageId,
+          })
+        } catch (error) {
+          lastError = error instanceof Error ? error.message : 'Push delivery failed'
+          await appendLog({
+            userId,
+            channel: 'push',
+            event,
+            status: 'failed',
+            attempt: 1,
+            provider: 'fcm',
+            phoneNumber: null,
+            payloadJson: payload,
+            sentAt: null,
+            error: lastError,
+            providerMessageId: null,
+          })
+        }
+      }
+    }
+
+    let ok = false
+    let status: 'sent' | 'failed' | 'skipped' = 'skipped'
+
+    if (smsSent || pushSent) {
+      ok = true
+      status = 'sent'
+    } else if (
+      (settings.phoneNumber && !settings.smsOptOut) ||
+      (settings.fcmToken && !settings.pushOptOut)
+    ) {
+      status = 'failed'
+    } else {
+      status = 'skipped'
+    }
+
     return {
-      ok: false,
-      status: 'failed',
+      ok,
+      status,
       event,
-      attempts: 2,
+      attempts,
       phoneNumber: settings.phoneNumber,
       body,
-      reason: 'delivery_failed',
+      reason: !ok ? (lastError ? 'delivery_failed' : 'opted_out') : undefined,
       lastError,
-      providerMessageId: null,
+      providerMessageId,
     }
   }
 

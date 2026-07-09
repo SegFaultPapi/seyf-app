@@ -41,11 +41,11 @@ export type NotificationPayloadFor<E extends NotificationEvent> = NotificationPa
 
 export type NotificationPayload = NotificationPayloadMap[NotificationEvent]
 
-export type NotificationChannel = 'sms'
+export type NotificationChannel = 'sms' | 'push'
 
 export type NotificationLogStatus = 'sent' | 'failed' | 'skipped'
 
-export type NotificationSkipReason = 'opted_out' | 'missing_phone'
+export type NotificationSkipReason = 'opted_out' | 'missing_phone' | 'missing_push_token'
 
 export type NotificationLogEntry = {
   id: string
@@ -54,7 +54,7 @@ export type NotificationLogEntry = {
   event: NotificationEvent
   status: NotificationLogStatus
   attempt: number
-  provider: 'twilio'
+  provider: 'twilio' | 'fcm'
   phoneNumber: string | null
   payloadJson: NotificationPayload
   sentAt: string | null
