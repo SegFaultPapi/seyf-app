@@ -125,12 +125,17 @@ export async function processCompletedWithdrawal(
 
     assertValidTransactionTransition("withdrawal", w.status, "completed");
 
-    await client.query(
-      `update withdrawals set status = 'completed', updated_at = now() where id = $1`,
-      [withdrawalId],
-    );
+    await client.query("update withdrawals set status = 'completed', updated_at = now() where id = $1", [withdrawalId]);
 
     await client.query("COMMIT");
+
+    const pendingStore = globalThis as unknown as {
+      __seyfPendingWithdrawals?: Map<string, { createdAt: string; amountMxn: number; userId: string }>;
+    };
+    if (pendingStore.__seyfPendingWithdrawals) {
+      pendingStore.__seyfPendingWithdrawals.delete(withdrawalId);
+    }
+
     return { ok: true, withdrawal: { ...w, status: "completed" as TransactionStatus } };
   } catch (e) {
     await client.query("ROLLBACK");
@@ -192,6 +197,14 @@ export async function processFailedWithdrawal(
     );
 
     await client.query("COMMIT");
+
+    const pendingStore = globalThis as unknown as {
+      __seyfPendingWithdrawals?: Map<string, { createdAt: string; amountMxn: number; userId: string }>;
+    };
+    if (pendingStore.__seyfPendingWithdrawals) {
+      pendingStore.__seyfPendingWithdrawals.delete(withdrawalId);
+    }
+
     return { ok: true, withdrawal: { ...w, status: "failed" as TransactionStatus, metadata: updatedMetadata }, restoredAmount: amountMxn };
   } catch (e) {
     await client.query("ROLLBACK");
@@ -242,6 +255,62 @@ export async function retryStuckWithdrawal(withdrawalId: string, actor: string):
     logger.error(
       { withdrawalId, actor, error: e instanceof Error ? e.message : String(e) },
       "retryStuckWithdrawal failed",
+    );
+    return { ok: false, withdrawal: null };
+  } finally {
+    client.release();
+  }
+}
+
+export async function processProcessingWithdrawal(
+  withdrawalId: string,
+  actor: string,
+): Promise<{ ok: boolean; withdrawal: WithdrawalRow | null }> {
+  const client = await getPool().connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("select set_config('seyf.actor', $1, true)", [actor]);
+
+    const withdrawal = await client.query<WithdrawalRow>(
+      `select id, user_id, type, status, amount_mxn::text as amount_mxn, metadata, created_at, updated_at
+       from withdrawals where id = $1 for update`,
+      [withdrawalId],
+    );
+
+    const w = withdrawal.rows[0];
+    if (!w) {
+      await client.query("ROLLBACK");
+      return { ok: false, withdrawal: null };
+    }
+
+    if (w.status === "processing") {
+      await client.query("ROLLBACK");
+      return { ok: true, withdrawal: w };
+    }
+
+    assertValidTransactionTransition("withdrawal", w.status, "processing");
+
+    const updatedMetadata = {
+      ...(w.metadata as Record<string, unknown>),
+      processing_at: new Date().toISOString(),
+      processed_by: actor,
+    };
+
+    const result = await client.query<WithdrawalRow>(
+      `update withdrawals
+       set status = 'processing', metadata = $2::jsonb, updated_at = now()
+       where id = $1
+       returning id, user_id, type, status, amount_mxn::text as amount_mxn, metadata, created_at, updated_at`,
+      [withdrawalId, JSON.stringify(updatedMetadata)],
+    );
+
+    await client.query("COMMIT");
+    return { ok: true, withdrawal: result.rows[0] ?? null };
+  } catch (e) {
+    await client.query("ROLLBACK");
+    logger.error(
+      { withdrawalId, actor, error: e instanceof Error ? e.message : String(e) },
+      "processProcessingWithdrawal failed",
     );
     return { ok: false, withdrawal: null };
   } finally {
@@ -313,6 +382,17 @@ export async function initiateWithdrawal(params: {
     );
 
     await client.query("COMMIT");
+
+    const pendingStore = globalThis as unknown as {
+      __seyfPendingWithdrawals?: Map<string, { createdAt: string; amountMxn: number; userId: string }>;
+    };
+    pendingStore.__seyfPendingWithdrawals ??= new Map();
+    pendingStore.__seyfPendingWithdrawals.set(withdrawalId, {
+      createdAt: new Date().toISOString(),
+      amountMxn: params.amountMxn,
+      userId: params.userId,
+    });
+
     return { ok: true, withdrawal: insertResult.rows[0] ?? null };
   } catch (e) {
     await client.query("ROLLBACK");

@@ -228,10 +228,24 @@ export default function EtherfuseOfframpDevClient() {
       if (!quoteId) {
         throw new Error('No encuentro quoteId en la cotización (~2 min de validez)')
       }
+      
+      // Extract targetAmount (MXN) from quote
+      let amountMxn: number | undefined
+      if (inner && typeof inner === 'object') {
+        const targetAmount = (inner as { targetAmount?: unknown }).targetAmount
+        if (typeof targetAmount === 'string' || typeof targetAmount === 'number') {
+          amountMxn = Number(targetAmount)
+        }
+      }
+
       const res = await fetch('/api/seyf/etherfuse/order/offramp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ quoteId, useAnchor }),
+        body: JSON.stringify({
+          quoteId,
+          useAnchor,
+          ...(amountMxn && !Number.isNaN(amountMxn) ? { amountMxn } : {}),
+        }),
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {

@@ -1,5 +1,15 @@
 import { logger } from "./logger";
 import { getActiveCycle } from "@/lib/seyf/cycle-store";
+import { query } from "@/lib/seyf/db/client";
+import { fetchOrderDetails, pickRampOrderTransactionDetails } from "@/lib/etherfuse/orders-api";
+import {
+  processCompletedWithdrawal,
+  processFailedWithdrawal,
+  processProcessingWithdrawal,
+  type WithdrawalRow,
+} from "@/lib/seyf/withdrawal-service";
+import { notifyUser } from "@/lib/seyf/notifications/notify";
+import { sendAlert, AlertSeverity } from "@/lib/observability/alerts";
 
 export type ReconciliationResult = {
   ok: boolean;
@@ -13,6 +23,7 @@ export type ReconciliationResult = {
   checkedAt: string;
   totalUsers: number;
   totalMismatches: number;
+  withdrawalsReconciled?: number;
 };
 
 export type PollarBalance = {
@@ -59,9 +70,128 @@ async function fetchPollarBalance(publicKey: string): Promise<PollarBalance | nu
   }
 }
 
+export async function reconcileWithdrawals(): Promise<number> {
+  const activeWithdrawals = await query<WithdrawalRow>(
+    `select id, user_id, type, status, amount_mxn::text as amount_mxn, metadata, created_at, updated_at
+     from withdrawals
+     where status in ('pending', 'processing')`
+  );
+
+  let count = 0;
+  for (const w of activeWithdrawals.rows) {
+    const withdrawalId = w.id;
+    const createdAt = new Date(w.created_at);
+    const ageMs = Date.now() - createdAt.getTime();
+
+    try {
+      // Query Etherfuse for order details using withdrawal ID as orderId
+      const order = await fetchOrderDetails(withdrawalId);
+      const details = pickRampOrderTransactionDetails(order);
+      const status = (details.status ?? "").toLowerCase();
+
+      if (status === "completed" || status === "success" || status === "confirmed") {
+        const result = await processCompletedWithdrawal(withdrawalId, "cron:reconciliation");
+        if (result.ok && result.withdrawal?.status === "completed") {
+          void notifyUser(w.user_id, "withdrawal_completed", {
+            withdrawalId,
+            amountMxn: Number(w.amount_mxn),
+            destinationLabel: details.bankAccountId ?? undefined,
+          }).catch((err) => {
+            logger.error({ withdrawalId, error: String(err) }, "Failed to notify withdrawal_completed");
+          });
+          count++;
+        }
+      } else if (status === "failed" || status === "canceled" || status === "cancelled" || status === "rejected") {
+        const result = await processFailedWithdrawal(
+          withdrawalId,
+          `Order failed in Etherfuse (status: ${details.status})`,
+          "cron:reconciliation"
+        );
+        if (result.ok && result.withdrawal?.status === "failed") {
+          void notifyUser(w.user_id, "withdrawal_failed", {
+            withdrawalId,
+            amountMxn: Number(w.amount_mxn),
+            reason: `Order failed in Etherfuse (status: ${details.status})`,
+          }).catch((err) => {
+            logger.error({ withdrawalId, error: String(err) }, "Failed to notify withdrawal_failed");
+          });
+
+          void sendAlert({
+            alert: "withdrawal_failed",
+            severity: AlertSeverity.CRITICAL,
+            message: `Retiro ${withdrawalId} falló en conciliación: Estado ${details.status}. Balance restaurado.`,
+            details: { withdrawalId, userId: w.user_id, amountMxn: Number(w.amount_mxn), reason: details.status },
+            timestamp: new Date().toISOString(),
+          });
+          count++;
+        }
+      } else if (status === "processing" || status === "funded") {
+        if (w.status === "pending") {
+          await processProcessingWithdrawal(withdrawalId, "cron:reconciliation");
+          count++;
+        }
+
+        const ageHours = ageMs / 3600000;
+        if (ageHours > 4) {
+          void sendAlert({
+            alert: "withdrawal_stuck_in_provider",
+            severity: AlertSeverity.CRITICAL,
+            message: `Retiro ${withdrawalId} estancado en proveedor > 4h (status: ${details.status})`,
+            details: { withdrawalId, userId: w.user_id, amountMxn: Number(w.amount_mxn), ageHours, providerStatus: details.status },
+            timestamp: new Date().toISOString(),
+          });
+        }
+      }
+    } catch (e) {
+      // If order is not found (404) in Etherfuse, handle the missing order case
+      const errMsg = e instanceof Error ? e.message : String(e);
+      const is404 = errMsg.includes("404") || errMsg.includes("Not Found");
+
+      if (is404) {
+        const ageMinutes = ageMs / 60000;
+        if (ageMinutes > 60) {
+          const result = await processFailedWithdrawal(
+            withdrawalId,
+            "No se encontró la orden en el proveedor después de 1 hora.",
+            "cron:reconciliation"
+          );
+          if (result.ok) {
+            void sendAlert({
+              alert: "withdrawal_missing_in_provider",
+              severity: AlertSeverity.CRITICAL,
+              message: `Retiro ${withdrawalId} no existe en Etherfuse después de 1 hora. Balance restaurado.`,
+              details: { withdrawalId, userId: w.user_id, amountMxn: Number(w.amount_mxn), ageMinutes },
+              timestamp: new Date().toISOString(),
+            });
+            count++;
+          }
+        }
+      } else {
+        logger.error(
+          { withdrawalId, error: errMsg },
+          "Failed to reconcile withdrawal with Etherfuse"
+        );
+      }
+    }
+  }
+
+  return count;
+}
+
 export async function runReconciliation(): Promise<ReconciliationResult> {
   const start = Date.now();
   const mismatches: ReconciliationResult["mismatches"] = [];
+
+  // Run withdrawals reconciliation first
+  let withdrawalsReconciled = 0;
+  try {
+    withdrawalsReconciled = await reconcileWithdrawals();
+  } catch (e) {
+    logger.error(
+      { error: e instanceof Error ? e.message : String(e) },
+      "Withdrawals reconciliation failed"
+    );
+  }
 
   const cycleStore = globalThis as unknown as {
     __seyfCycleStore?: { activeByUserId: Map<string, { userId: string; principalMxn: number; confirmedOnchainTx: string | null }> };
@@ -76,6 +206,7 @@ export async function runReconciliation(): Promise<ReconciliationResult> {
       checkedAt: new Date().toISOString(),
       totalUsers: 0,
       totalMismatches: 0,
+      withdrawalsReconciled,
     };
   }
 
@@ -113,6 +244,7 @@ export async function runReconciliation(): Promise<ReconciliationResult> {
     checkedAt: new Date().toISOString(),
     totalUsers: cycles.size,
     totalMismatches: mismatches.length,
+    withdrawalsReconciled,
   };
 
   if (mismatches.length > 0) {
@@ -122,6 +254,7 @@ export async function runReconciliation(): Promise<ReconciliationResult> {
         totalMismatches: mismatches.length,
         totalUsers: cycles.size,
         duration_ms: Date.now() - start,
+        withdrawalsReconciled,
       },
       `Reconciliation: ${mismatches.length} mismatches found out of ${cycles.size} cycles`,
     );
@@ -131,6 +264,7 @@ export async function runReconciliation(): Promise<ReconciliationResult> {
         route: "cron/reconciliation",
         totalUsers: cycles.size,
         duration_ms: Date.now() - start,
+        withdrawalsReconciled,
       },
       `Reconciliation: all ${cycles.size} cycles match onchain balances`,
     );
